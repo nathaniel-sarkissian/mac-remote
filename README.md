@@ -108,3 +108,20 @@ This server is plain HTTP. Use `http://HOST:8787`, not `https://HOST:8787`, unle
 The browser opens one WebSocket at /ws and uses it for mouse movement, clicks, keyboard buttons, text sends, and system actions. Mouse deltas are coalesced to animation frames, and stale positions are not replayed if the network briefly falls behind. The existing HTTP API remains available automatically as a fallback while the WebSocket reconnects.
 
 The WebSocket has no external Python dependency; it is implemented directly in the server for compatibility with the Mac mini's Python 2.7 environment.
+
+
+## Update from iPhone via SSH
+
+Once you have cloned the private repository to `~/mac-remote-updates`, update the server and restart its LaunchAgent with a single command:
+
+```sh
+bash ~/mac-remote-updates/update-mac.sh
+```
+
+The script runs `git pull --ff-only`, validates the new Python source, backs up the installed file as `~/mac_remote_control/mac_iphone_text_server.py.bak`, replaces it, restarts the LaunchAgent and checks `/health`. It assumes the existing installed server is at `~/mac_remote_control/mac_iphone_text_server.py`. It does not change the LaunchAgent's installed path.
+
+On the very first use, pull the new updater script before running it:
+
+```sh
+git -C ~/mac-remote-updates pull --ff-only && bash ~/mac-remote-updates/update-mac.sh
+```
