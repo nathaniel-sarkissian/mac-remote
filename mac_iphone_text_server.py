@@ -2,9 +2,12 @@
 from __future__ import print_function
 
 import argparse
+import base64
+import hashlib
 import json
 import os
 import socket
+import struct
 import subprocess
 import sys
 import threading
@@ -34,6 +37,9 @@ except NameError:
 DEFAULT_PORT = 8787
 MAX_BODY_BYTES = 100000
 CLIENT_SOCKET_TIMEOUT = 5.0
+WEBSOCKET_IDLE_TIMEOUT = 45.0
+MAX_WEBSOCKET_MESSAGE_BYTES = 100000
+WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 # Keep Mac-control operations ordered even though HTTP requests are handled
 # concurrently. This preserves the original single-threaded input semantics
@@ -290,6 +296,99 @@ INDEX_HTML = """<!doctype html>
       return data;
     }
 
+    // One persistent socket carries mouse and keyboard events. HTTP remains as
+    // a transparent fallback while the socket is connecting or reconnecting.
+    let controlSocket = null;
+    let reconnectTimer = null;
+    let reconnectDelay = 250;
+    let heartbeatTimer = null;
+    const maxSocketBuffer = 8192;
+
+    function socketIsOpen() {
+      return controlSocket && controlSocket.readyState === WebSocket.OPEN;
+    }
+
+    function websocketURL() {
+      const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return scheme + '//' + location.host + '/ws';
+    }
+
+    function startHeartbeat() {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      heartbeatTimer = setInterval(() => {
+        if (socketIsOpen()) controlSocket.send('p');
+      }, 20000);
+    }
+
+    function scheduleReconnect() {
+      if (reconnectTimer) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectControlSocket();
+      }, reconnectDelay);
+      reconnectDelay = Math.min(3000, reconnectDelay * 1.6);
+    }
+
+    function connectControlSocket() {
+      if (controlSocket && (controlSocket.readyState === WebSocket.OPEN || controlSocket.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+      try {
+        const socket = new WebSocket(websocketURL());
+        controlSocket = socket;
+        socket.addEventListener('open', () => {
+          reconnectDelay = 250;
+          startHeartbeat();
+          scheduleMouseFlush();
+          if (!status.textContent || status.textContent === 'Reconnecting...') {
+            setStatus('Connected.');
+          }
+        });
+        socket.addEventListener('close', () => {
+          if (controlSocket === socket) controlSocket = null;
+          if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+          }
+          if (document.visibilityState === 'visible') {
+            setStatus('Reconnecting...');
+            scheduleReconnect();
+          }
+        });
+        socket.addEventListener('error', () => {
+          // close will trigger reconnect; HTTP fallback remains available.
+        });
+      } catch (error) {
+        scheduleReconnect();
+      }
+    }
+
+    function sendSocket(message, allowBuffered) {
+      if (!socketIsOpen()) return false;
+      if (!allowBuffered && controlSocket.bufferedAmount > maxSocketBuffer) return false;
+      try {
+        controlSocket.send(message);
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    async function sendControl(message, fallbackURL, fallbackPayload) {
+      if (sendSocket(message, true)) return { ok: true, websocket: true };
+      connectControlSocket();
+      return postJSON(fallbackURL, fallbackPayload);
+    }
+
+    window.addEventListener('pageshow', connectControlSocket);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        connectControlSocket();
+      } else if (controlSocket) {
+        try { controlSocket.close(); } catch (error) {}
+      }
+    });
+
     send.addEventListener('click', async () => {
       const value = text.value;
       if (!value.length) {
@@ -300,8 +399,8 @@ INDEX_HTML = """<!doctype html>
       send.disabled = true;
       setStatus('Sending...');
       try {
-        const data = await postJSON('/api/paste', { text: value });
-        setStatus(`Sent ${data.characters} character${data.characters === 1 ? '' : 's'}.`);
+        await sendControl('t' + JSON.stringify(value), '/api/paste', { text: value });
+        setStatus('Sent ' + value.length + ' character' + (value.length === 1 ? '' : 's') + '.');
       } catch (error) {
         setStatus(`Failed: ${error.message}`);
       } finally {
@@ -320,7 +419,7 @@ INDEX_HTML = """<!doctype html>
       button.addEventListener('click', async () => {
         button.disabled = true;
         try {
-          await postJSON('/api/key', { key: button.dataset.key });
+          await sendControl('k,' + button.dataset.key, '/api/key', { key: button.dataset.key });
           setStatus(`${button.textContent} sent.`);
         } catch (error) {
           setStatus(`Failed: ${error.message}`);
@@ -335,7 +434,7 @@ INDEX_HTML = """<!doctype html>
       button.addEventListener('click', async () => {
         button.disabled = true;
         try {
-          await postJSON('/api/mouse', { action: 'click', button: button.dataset.click });
+          await sendControl('c,' + button.dataset.click, '/api/mouse', { action: 'click', button: button.dataset.click });
           setStatus(`${button.textContent} sent.`);
         } catch (error) {
           setStatus(`Failed: ${error.message}`);
@@ -357,7 +456,7 @@ INDEX_HTML = """<!doctype html>
     let pendingDy = 0;
     let pendingDrag = false;
     let pendingScroll = 0;
-    let flushTimer = null;
+    let flushFrame = 0;
     let mouseRequestInFlight = false;
     let lastTapAt = 0;
     let lastTapX = 0;
@@ -406,14 +505,41 @@ INDEX_HTML = """<!doctype html>
     }
 
     function scheduleMouseFlush() {
-      if (flushTimer || mouseRequestInFlight || !mouseQueueHasData()) return;
-      flushTimer = setTimeout(flushMouseQueue, 18);
+      if (flushFrame || !mouseQueueHasData()) return;
+      flushFrame = requestAnimationFrame(flushMouseQueue);
     }
 
     async function flushMouseQueue() {
-      flushTimer = null;
-      if (mouseRequestInFlight || !mouseQueueHasData()) return;
+      flushFrame = 0;
+      if (!mouseQueueHasData()) return;
 
+      // If the network briefly falls behind, accumulate the deltas and send
+      // their sum later instead of replaying stale pointer positions.
+      if (socketIsOpen()) {
+        if (controlSocket.bufferedAmount > maxSocketBuffer) {
+          scheduleMouseFlush();
+          return;
+        }
+        const dx = Math.round(pendingDx);
+        const dy = Math.round(pendingDy);
+        const drag = pendingDrag;
+        const scroll = Math.round(pendingScroll);
+        pendingDx = 0;
+        pendingDy = 0;
+        pendingDrag = false;
+        pendingScroll = 0;
+        if (dx || dy) sendSocket((drag ? 'd' : 'm') + ',' + dx + ',' + dy, false);
+        if (scroll) sendSocket('s,' + scroll, false);
+        scheduleMouseFlush();
+        return;
+      }
+
+      // HTTP fallback while the WebSocket is connecting or reconnecting.
+      connectControlSocket();
+      if (mouseRequestInFlight) {
+        scheduleMouseFlush();
+        return;
+      }
       const dx = Math.round(pendingDx);
       const dy = Math.round(pendingDy);
       const drag = pendingDrag;
@@ -423,7 +549,6 @@ INDEX_HTML = """<!doctype html>
       pendingDrag = false;
       pendingScroll = 0;
       mouseRequestInFlight = true;
-
       try {
         if (dx || dy) {
           await postJSON('/api/mouse', { action: drag ? 'drag' : 'move', dx, dy });
@@ -432,7 +557,7 @@ INDEX_HTML = """<!doctype html>
           await postJSON('/api/mouse', { action: 'scroll', dy: scroll });
         }
       } catch (error) {
-        setStatus(`Mouse failed: ${error.message}`);
+        setStatus('Mouse failed: ' + error.message);
       } finally {
         mouseRequestInFlight = false;
         scheduleMouseFlush();
@@ -466,7 +591,7 @@ INDEX_HTML = """<!doctype html>
       clickTimer = setTimeout(async () => {
         clickTimer = null;
         try {
-          await postJSON('/api/mouse', { action: 'click', button: 'left' });
+          await sendControl('c,left', '/api/mouse', { action: 'click', button: 'left' });
           setStatus('Click sent.');
         } catch (error) {
           setStatus(`Mouse failed: ${error.message}`);
@@ -495,7 +620,7 @@ INDEX_HTML = """<!doctype html>
         lastTapAt = 0;
         gestureDragging = true;
         trackingMode = 'drag';
-        postJSON('/api/mouse', { action: 'down', button: 'left' }).then(() => {
+        sendControl('n,left', '/api/mouse', { action: 'down', button: 'left' }).then(() => {
           setStatus('Drag started.');
         }).catch((error) => {
           gestureDragging = false;
@@ -542,7 +667,7 @@ INDEX_HTML = """<!doctype html>
       if (gestureDragging) {
         gestureDragging = false;
         try {
-          await postJSON('/api/mouse', { action: 'up', button: 'left' });
+          await sendControl('u,left', '/api/mouse', { action: 'up', button: 'left' });
           setStatus('Drag released.');
         } catch (error) {
           setStatus(`Drag failed: ${error.message}`);
@@ -562,7 +687,7 @@ INDEX_HTML = """<!doctype html>
       tracking = false;
       if (gestureDragging) {
         gestureDragging = false;
-        postJSON('/api/mouse', { action: 'up', button: 'left' }).catch((error) => {
+        sendControl('u,left', '/api/mouse', { action: 'up', button: 'left' }).catch((error) => {
           setStatus(`Drag failed: ${error.message}`);
         });
       }
@@ -572,7 +697,7 @@ INDEX_HTML = """<!doctype html>
     openChrome.addEventListener('click', async () => {
       openChrome.disabled = true;
       try {
-        await postJSON('/api/system', { action: 'open_chrome' });
+        await sendControl('x,chrome', '/api/system', { action: 'open_chrome' });
         setStatus('Chrome opened.');
       } catch (error) {
         setStatus(`Failed: ${error.message}`);
@@ -586,7 +711,7 @@ INDEX_HTML = """<!doctype html>
       shutdownMac.disabled = true;
       setStatus('Shutting down Mac...');
       try {
-        await postJSON('/api/system', { action: 'shutdown' });
+        await sendControl('x,shutdown', '/api/system', { action: 'shutdown' });
       } catch (error) {
         setStatus(`Shutdown failed: ${error.message}`);
         shutdownMac.disabled = false;
@@ -597,12 +722,12 @@ INDEX_HTML = """<!doctype html>
       dragLock.disabled = true;
       try {
         if (dragLocked) {
-          await postJSON('/api/mouse', { action: 'up', button: 'left' });
+          await sendControl('u,left', '/api/mouse', { action: 'up', button: 'left' });
           dragLocked = false;
           dragLock.classList.remove('active');
           setStatus('Drag released.');
         } else {
-          await postJSON('/api/mouse', { action: 'down', button: 'left' });
+          await sendControl('n,left', '/api/mouse', { action: 'down', button: 'left' });
           dragLocked = true;
           dragLock.classList.add('active');
           setStatus('Drag lock on.');
@@ -613,6 +738,8 @@ INDEX_HTML = """<!doctype html>
         dragLock.disabled = false;
       }
     });
+
+    connectControlSocket();
   </script>
 </body>
 </html>
@@ -703,11 +830,11 @@ def press_key(name, dry_run=False):
         print("[dry-run] key: {0}".format(name))
         return
 
-    run_osascript([
-        'tell application "System Events"',
-        'key code {0}'.format(code),
-        'end tell',
-    ])
+    quartz = load_quartz()
+    down = quartz.CGEventCreateKeyboardEvent(None, code, True)
+    up = quartz.CGEventCreateKeyboardEvent(None, code, False)
+    quartz.CGEventPost(quartz.kCGHIDEventTap, down)
+    quartz.CGEventPost(quartz.kCGHIDEventTap, up)
 
 
 def point_xy(point):
@@ -864,17 +991,223 @@ def shutdown_mac(dry_run=False):
     ])
 
 
+def read_exact(stream, length):
+    chunks = []
+    remaining = length
+    while remaining:
+        chunk = stream.read(remaining)
+        if not chunk:
+            return None
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
+
+def byte_value(value):
+    if isinstance(value, int):
+        return value
+    return ord(value)
+
+
+def bytearray_bytes(value):
+    if sys.version_info[0] >= 3:
+        return bytes(value)
+    return "".join(chr(item) for item in value)
+
+
+def websocket_frame(stream):
+    header = read_exact(stream, 2)
+    if header is None:
+        return None
+
+    first = byte_value(header[0])
+    second = byte_value(header[1])
+    fin = bool(first & 0x80)
+    opcode = first & 0x0f
+    masked = bool(second & 0x80)
+    length = second & 0x7f
+
+    if length == 126:
+        extended = read_exact(stream, 2)
+        if extended is None:
+            return None
+        length = struct.unpack("!H", extended)[0]
+    elif length == 127:
+        extended = read_exact(stream, 8)
+        if extended is None:
+            return None
+        length = struct.unpack("!Q", extended)[0]
+
+    if length > MAX_WEBSOCKET_MESSAGE_BYTES:
+        raise ValueError("WebSocket message is too large")
+    if not masked:
+        raise ValueError("client WebSocket frames must be masked")
+
+    mask_key = read_exact(stream, 4)
+    if mask_key is None:
+        return None
+    payload = read_exact(stream, length)
+    if payload is None:
+        return None
+
+    payload_bytes = bytearray(payload)
+    mask_bytes = bytearray(mask_key)
+    for index in range(len(payload_bytes)):
+        payload_bytes[index] ^= mask_bytes[index % 4]
+
+    return fin, opcode, bytearray_bytes(payload_bytes)
+
+
+def websocket_packet(opcode, payload=b""):
+    payload = as_bytes(payload)
+    length = len(payload)
+    first = 0x80 | (opcode & 0x0f)
+    if length < 126:
+        header = struct.pack("!BB", first, length)
+    elif length <= 0xffff:
+        header = struct.pack("!BBH", first, 126, length)
+    else:
+        header = struct.pack("!BBQ", first, 127, length)
+    return header + payload
+
+
 class RemoteHandler(BaseHTTPRequestHandler):
-    server_version = "MacTextRemote/1.1"
+    server_version = "MacTextRemote/1.2"
     protocol_version = "HTTP/1.0"
 
     def do_GET(self):
-        if self.path == "/" or self.path.startswith("/?"):
+        if self.path == "/ws":
+            self.handle_websocket()
+        elif self.path == "/" or self.path.startswith("/?"):
             self.send_bytes(200, INDEX_HTML, "text/html; charset=utf-8")
         elif self.path == "/health":
-            self.send_json(200, {"ok": True})
+            self.send_json(200, {"ok": True, "websocket": True})
         else:
             self.send_json(404, {"error": "not found"})
+
+    def handle_websocket(self):
+        upgrade = self.headers.get("Upgrade", "").lower()
+        connection = self.headers.get("Connection", "").lower()
+        key = self.headers.get("Sec-WebSocket-Key", "").strip()
+        if upgrade != "websocket" or "upgrade" not in connection or not key:
+            self.send_json(400, {"error": "invalid WebSocket upgrade"})
+            return
+
+        accept_source = as_bytes(key + WEBSOCKET_GUID)
+        accept = base64.b64encode(hashlib.sha1(accept_source).digest())
+        if not isinstance(accept, str):
+            accept = accept.decode("ascii")
+
+        response = (
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Accept: {0}\r\n"
+            "\r\n"
+        ).format(accept)
+        self.wfile.write(as_bytes(response))
+        self.wfile.flush()
+
+        # The browser heartbeat arrives every 20 seconds. This allows dead
+        # mobile connections to be reaped without reintroducing the old hang.
+        self.request.settimeout(WEBSOCKET_IDLE_TIMEOUT)
+        fragmented = []
+        fragment_opcode = None
+
+        try:
+            while True:
+                frame = websocket_frame(self.rfile)
+                if frame is None:
+                    break
+                fin, opcode, payload = frame
+
+                if opcode == 0x8:
+                    try:
+                        self.wfile.write(websocket_packet(0x8, payload[:125]))
+                        self.wfile.flush()
+                    except Exception:
+                        pass
+                    break
+                if opcode == 0x9:
+                    self.wfile.write(websocket_packet(0xA, payload[:125]))
+                    self.wfile.flush()
+                    continue
+                if opcode == 0xA:
+                    continue
+
+                if opcode == 0x1:
+                    if fin:
+                        self.handle_websocket_message(as_text(payload))
+                    else:
+                        fragmented = [payload]
+                        fragment_opcode = opcode
+                    continue
+
+                if opcode == 0x0 and fragment_opcode == 0x1:
+                    fragmented.append(payload)
+                    if sum(len(part) for part in fragmented) > MAX_WEBSOCKET_MESSAGE_BYTES:
+                        raise ValueError("WebSocket message is too large")
+                    if fin:
+                        self.handle_websocket_message(as_text(b"".join(fragmented)))
+                        fragmented = []
+                        fragment_opcode = None
+        except socket.timeout:
+            pass
+        except Exception as exc:
+            print("WebSocket {0} error: {1}".format(self.client_address[0], exc))
+        finally:
+            self.close_connection = True
+
+    def handle_websocket_message(self, message):
+        if message == "p" or not message:
+            return
+
+        command = message[0]
+        try:
+            if command == "t":
+                value = json.loads(message[1:])
+                if not isinstance(value, string_types):
+                    raise ValueError("text must be a string")
+                with CONTROL_LOCK:
+                    paste_text(value, self.server.dry_run)
+                return
+
+            parts = message.split(",")
+            if command in ("m", "d") and len(parts) == 3:
+                with CONTROL_LOCK:
+                    if command == "d":
+                        drag_mouse(parts[1], parts[2], self.server.dry_run)
+                    else:
+                        move_mouse(parts[1], parts[2], self.server.dry_run)
+            elif command == "s" and len(parts) == 2:
+                with CONTROL_LOCK:
+                    scroll_mouse(parts[1], self.server.dry_run)
+            elif command == "c" and len(parts) == 2:
+                with CONTROL_LOCK:
+                    click_mouse(parts[1], self.server.dry_run)
+            elif command == "n" and len(parts) == 2:
+                with CONTROL_LOCK:
+                    mouse_button_down(parts[1], self.server.dry_run)
+            elif command == "u" and len(parts) == 2:
+                with CONTROL_LOCK:
+                    mouse_button_up(parts[1], self.server.dry_run)
+            elif command == "k" and len(parts) == 2:
+                key = parts[1]
+                if key not in KEY_CODES:
+                    raise ValueError("unsupported key")
+                with CONTROL_LOCK:
+                    press_key(key, self.server.dry_run)
+            elif command == "x" and len(parts) == 2:
+                if parts[1] == "chrome":
+                    open_chrome(self.server.dry_run)
+                elif parts[1] == "shutdown":
+                    shutdown_mac(self.server.dry_run)
+                else:
+                    raise ValueError("unsupported system action")
+            else:
+                raise ValueError("unsupported WebSocket command")
+        except Exception as exc:
+            print("WebSocket command error: {0}".format(exc))
 
     def do_POST(self):
         try:
