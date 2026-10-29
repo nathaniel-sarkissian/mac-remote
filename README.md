@@ -101,3 +101,10 @@ To remove the startup item:
 The server uses a threaded HTTP server with a short timeout on idle client sockets. This prevents an incomplete or speculative browser connection from blocking every other request. Touchpad movement is also coalesced so only one movement request is in flight at a time.
 
 This server is plain HTTP. Use `http://HOST:8787`, not `https://HOST:8787`, unless TLS is added separately.
+
+
+## Persistent input socket
+
+The browser opens one WebSocket at /ws and uses it for mouse movement, clicks, keyboard buttons, text sends, and system actions. Mouse deltas are coalesced to animation frames, and stale positions are not replayed if the network briefly falls behind. The existing HTTP API remains available automatically as a fallback while the WebSocket reconnects.
+
+The WebSocket has no external Python dependency; it is implemented directly in the server for compatibility with the Mac mini's Python 2.7 environment.
