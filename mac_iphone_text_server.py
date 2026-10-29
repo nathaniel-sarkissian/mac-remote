@@ -797,8 +797,7 @@ def mouse_button_down(button_name="left", dry_run=False):
 
 
 def mouse_button_up(button_name="left", dry_run=False):
-    if button_name not in MOUSE_BUTTONS:
-        raise ValueError("unsupported mouse button")
+    if button_name not in MOUSE_BUTTONS:        raise ValueError("unsupported mouse button")
     if dry_run or sys.platform != "darwin":
         print("[dry-run] mouse up: {0}".format(button_name))
         return
@@ -998,3 +997,14 @@ def main():
     parser.add_argument("--port", default=DEFAULT_PORT, type=int, help="Port to listen on. Default: 8787")
     parser.add_argument("--dry-run", action="store_true", help="Do not control the Mac; print actions instead.")
     args = parser.parse_args()
+
+    server = RemoteHTTPServer((args.host, args.port), RemoteHandler, dry_run=args.dry_run)
+    ip = local_ip()
+    print("Mac Text Remote is running.")
+    print("Open from iPhone: http://{0}:{1}".format(ip, args.port))
+    print("Local Mac URL:    http://127.0.0.1:{0}".format(args.port))
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
