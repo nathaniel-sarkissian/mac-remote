@@ -1372,6 +1372,53 @@ function visiblePolygon(shape){
 }
 let geometrySpacing=.6,geometryWidth=.25;
 
+// Deterministic, uniformly shuffled reveal order for plant/grass groups.
+// This RNG is deliberately independent of the original meadow's PRNG,
+// so density adjustments cannot alter species, placement, or proportions.
+function densityRanks(count,seed){
+  const order=Array.from({length:count},(_,i)=>i);
+  let state=seed>>>0;
+  for(let i=count-1;i>0;i--){
+    state=(state+0x6D2B79F5)>>>0;
+    let z=state;
+    z=Math.imul(z^(z>>>15),z|1);
+    z^=z+Math.imul(z^(z>>>7),z|61);
+    const j=Math.floor(((z^(z>>>14))>>>0)/4294967296*(i+1));
+    [order[i],order[j]]=[order[j],order[i]];
+  }
+  const rank=new Uint32Array(count);
+  for(let i=0;i<count;i++)rank[order[i]]=i;
+  return rank;
+}
+
+/**
+ * Select whole plants (all stems, leaves, petals, disks) and individual grass
+ * blades from an unchanged source meadow. 0% selects none; 100% returns the
+ * exact same scene array. Adjusting these controls never regenerates geometry.
+ * Rankings are assigned once per original seed, so slider movement is stable
+ * and increasing a percentage only adds shapes, never replaces existing ones.
+ */
+export function filterNeverSameScene(generated,{plants=100,grass=100}={}){
+  if(!Number.isFinite(plants)||plants<0||plants>100||
+     !Number.isFinite(grass)||grass<0||grass>100)
+    throw new RangeError('Plant and grass density must be between 0 and 100');
+  if(plants===100&&grass===100)return {scene:generated.scene,stats:generated.stats};
+  const plantCount=Math.round(generated.stats.plants*plants/100);
+  const grassCount=Math.round(generated.stats.grass*grass/100);
+  const scene=[];
+  let leaves=0,petals=0,disks=0;
+  for(const item of generated.scene){
+    const show=item.grass?item.densityRank<grassCount:item.densityRank<plantCount;
+    if(!show)continue;
+    scene.push(item);
+    if(item.plantPart==='leaf')leaves++;
+    else if(item.plantPart==='petal')petals++;
+    else if(item.plantPart==='disk')disks++;
+  }
+  return {scene,stats:{...generated.stats,plants:plantCount,grass:grassCount,
+    leaves,petals,disks}};
+}
+
 /**
  * Original specimen geometry with a deliberately static time state.
  * Returns front-to-back HatchRenderer scene objects. The old raster buffer,
@@ -1421,7 +1468,11 @@ export function generateNeverSame({seed=2611,grid=60,grassPerPlant=2,palette=nul
       age:(random(.2,1)+time_long)%1,isFlower:true,scale:2,
       flowerThresholdNoise,flowerThreshold
     });
+    const plantShapeStart=shapes.length;
     plant.draw();
+    // Every segment and polygon of a plant must appear/disappear together.
+    for(let s=plantShapeStart;s<shapes.length;s++)
+      shapes[s].plantIndex=generatedPlants;
     generatedPlants++;
     for(let k=0;k<grassPerPlant;k++){
       const nBladesToDraw=round(map(flowerThresholdNoise-flowerThreshold,-1,1,2,1,true));
@@ -1431,20 +1482,27 @@ export function generateNeverSame({seed=2611,grid=60,grassPerPlant=2,palette=nul
       const br=terrainLight(grassPos.x,grassPos.z)+random(-1,1)*.3;
       const grassHeight=map(sNoise.noise2D(grassPos.x*.04+543232,grassPos.z*.04+6544121),-1,1,5,15);
       grassShape({pos:grassPos,scale:_scalarMult(_createV(2.5,grassHeight,0),.5),palette:grassPalette,br});
+      booleanShapes[booleanShapes.length-1].grassIndex=generatedGrass;
       generatedGrass++;
     }
   }
+  const plantRanks=densityRanks(generatedPlants,(seed>>>0)^0x91E10DA5);
+  const grassRanks=densityRanks(generatedGrass,(seed>>>0)^0xBA4D1C65);
   const entries=[];
   for(const shape of shapes){
     if(shape.length===2){
       const points=shape.map(toXY);
       if(!points.flat().every(Number.isFinite))continue;
       entries.push({depth:shape.zIndex,item:{
-        type:'path',points,stroke:{color:shape.stroke??'#627e70',lineWidth:.3}
+        type:'path',points,densityRank:plantRanks[shape.plantIndex],
+        stroke:{color:shape.stroke??'#627e70',lineWidth:.3}
       }});
     }else{
       const item=visiblePolygon(shape);
-      if(item)entries.push({depth:shape.zIndex,item});
+      if(item){
+        item.densityRank=plantRanks[shape.plantIndex];
+        entries.push({depth:shape.zIndex,item});
+      }
     }
   }
   for(const grass of booleanShapes){
@@ -1452,6 +1510,7 @@ export function generateNeverSame({seed=2611,grid=60,grassPerPlant=2,palette=nul
     if(points.length!==3||!points.flat().every(Number.isFinite))continue;
     entries.push({depth:grass.zIndex,item:{
       type:'polygon',grass:true,outline:false,points,
+      densityRank:grassRanks[grass.grassIndex],
       hatch:{...originalHatch(points,angleDegrees(grass.hashAngle),
         {density:grass.nHashesMult,wobble:grass.wobbleAmt,weight:grass.hashWeight}),
         color:grass.fill??'#82947e'}

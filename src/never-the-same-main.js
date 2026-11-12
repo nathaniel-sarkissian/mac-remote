@@ -1,5 +1,5 @@
 import {HatchRenderer,hexColor} from './hatch-renderer.js';
-import {generateNeverSame} from './never-the-same-geometry.js';
+import {generateNeverSame,filterNeverSameScene} from './never-the-same-geometry.js';
 
 const $=id=>document.getElementById(id);
 const canvas=$('canvas');
@@ -11,10 +11,39 @@ try {
   $('error').hidden=false;$('error').textContent='WebGL2 is required: '+error.message;
   throw error;
 }
-let schedule,frame=false,stats={},seed=2611,scene=[];
+let schedule,densitySchedule,frame=false,stats={},visibleStats={},seed=2611,scene=[],source=null;
 const num=id=>Number($(id).value);
 const format=(v,id)=>id==='angleJitter'?v.toFixed(1)+'°':id==='width'||id==='spacing'||id==='placementJitter'?v.toFixed(2):id==='lengthJitter'?v+'%':String(v);
 const hatchControls=['spacing','width','angleJitter','placementJitter','lengthJitter'];
+const densityControls=['plantDensity','grassDensity'];
+function updateDensityOutputs(){
+  for(const id of densityControls){
+    const total=id==='plantDensity'?stats.plants:stats.grass;
+    $(id+'Out').textContent=Number.isFinite(total)
+      ?Math.round(total*num(id)/100).toLocaleString()+' / '+total.toLocaleString()
+      :num(id)+'%';
+  }
+}
+function applyDensity(){
+  const selection=filterNeverSameScene(source,{
+    plants:num('plantDensity'),grass:num('grassDensity')});
+  visibleStats=selection.stats;
+  renderer.setScene(selection.scene);
+  if(renderer.occlusion&&renderer.stats.algorithm!=='boolean/full-width')
+    throw new Error('CPU boolean clipping is required');
+  setStats();renderLater();
+}
+for(const id of densityControls){
+  const el=$(id);
+  el.addEventListener('input',()=>{
+    updateDensityOutputs();clearTimeout(densitySchedule);
+    densitySchedule=setTimeout(()=>attempt(applyDensity),160);
+  });
+  el.addEventListener('change',()=>{
+    updateDensityOutputs();clearTimeout(densitySchedule);attempt(applyDensity);
+  });
+}
+updateDensityOutputs();
 function updateHatches(){
   // Change hatch density without regenerating the original scene geometry.
   const spacing=num('spacing'),width=num('width');
@@ -42,7 +71,7 @@ function style(){
     placementJitter:num('placementJitter'),lengthJitter:num('lengthJitter')};
 }
 function setStats(){
-  $('stats').textContent=`${stats.plants??0} PLANTS · ${stats.grass??0} GRASS · ${renderer.stats.polygons.toLocaleString()} POLYGONS · ${renderer.stats.strokes.toLocaleString()} MARKS`;
+  $('stats').textContent=`${visibleStats.plants??0} PLANTS · ${visibleStats.grass??0} GRASS · ${renderer.stats.polygons.toLocaleString()} POLYGONS · ${renderer.stats.strokes.toLocaleString()} MARKS`;
 }
 function renderLater(){
   if(frame)return;frame=true;requestAnimationFrame(()=>{
@@ -63,14 +92,12 @@ function rebuild({fit=false}={}){
   $('error').hidden=true;
   $('stats').textContent='Constructing the original 3,600-position meadow…';
   const geometry=generateNeverSame({seed,spacing:num('spacing'),width:num('width')});
-  stats=geometry.stats;scene=geometry.scene;
+  source=geometry;stats=geometry.stats;scene=geometry.scene;
+  updateDensityOutputs();
   renderer.background=hexColor(geometry.background);
   renderer.setStyle(style());
-  renderer.setScene(scene);
-  if(renderer.occlusion&&renderer.stats.algorithm!=='boolean/full-width')
-    throw new Error('CPU boolean clipping is required');
+  applyDensity();
   if(fit)fitOriginal(38);
-  setStats();renderLater();
 }
 function attempt(fn){
   try{fn()}catch(e){console.error(e);$('error').hidden=false;$('error').textContent=e.message;throw e;}

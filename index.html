@@ -11,7 +11,10 @@
     <div class="eyebrow">GEOMETRY STUDY · 2025 / 2026</div>
     <h1>Never the<br/><em>Same.</em></h1>
     <p class="lede">The original 2025 meadow scene builder, drawn with the new Hatch Render engine. Only hatching is configurable.</p>
-    <div class="section">01 — HATCH SETTINGS</div>
+    <div class="section">01 — SCENE DENSITY</div>
+    <label class="field">Plants <output id="plantDensityOut">100%</output><input id="plantDensity" type="range" min="0" max="100" step="1" value="100"/></label>
+    <label class="field">Grass <output id="grassDensityOut">100%</output><input id="grassDensity" type="range" min="0" max="100" step="1" value="100"/></label>
+    <div class="section">02 — HATCH SETTINGS</div>
     <label class="field">Hatch spacing <output id="spacingOut"></output><input id="spacing" type="range" min=".2" max="2.5" step=".05" value=".6"/></label>
     <label class="field">Stroke width <output id="widthOut"></output><input id="width" type="range" min=".05" max="3.2" step=".05" value=".25"/></label>
     <label class="field">Angle jitter <output id="angleJitterOut"></output><input id="angleJitter" type="range" min="0" max="16" step=".5" value="0"/></label>
@@ -20,7 +23,7 @@
     <label class="switch"><span>CPU boolean occlusion<small>Full-width polygon subtraction, square-ended strokes</small></span><input type="checkbox" id="occlusion" checked/></label>
     <label class="switch"><span>Draw outlines</span><input type="checkbox" id="outlines" /></label>
     <button id="generate">Regenerate meadow</button>
-    <p class="details">Original 60 × 60 planting lattice, noise-driven growth, terrain and clustered grass. Plant geometry stays fixed when changing hatching. No animation or shader effects.</p>
+    <p class="details">Original 60 × 60 planting lattice, noise-driven growth, terrain and clustered grass. The two density sliders only hide existing plants and grass, so returning to 100% restores the exact scene. No animation or shader effects.</p>
     <div class="source"><a href="https://verse.works/series/never-the-same-by-nat-sarkissian" target="_blank" rel="noopener">Original on Verse</a> <span>·</span> <a href="https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/f1b9509909644256d866363e6f953932100ded78/index.html">Hatch Meadow</a></div>
   </aside>
   <main class="main">
