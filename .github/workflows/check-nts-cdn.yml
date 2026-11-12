@@ -150,8 +150,14 @@ jobs:
           flower_only=html.unescape(isolated.group(1)) if isolated else ''
           print('Actual isolated blossom-only framebuffer pixels:',flower_only)
           isolated_match=re.fullmatch(r'(\d+) FLOWER-ONLY',flower_only)
+          spread=re.search(r'<p id="flowerSpanPixels"[^>]*>([^<]*)</p>',source)
+          span_text=html.unescape(spread.group(1)) if spread else ''
+          print('Flower-only bloom width across actual phone frame:',span_text)
+          span_match=re.fullmatch(r'(\d+) PX SPAN',span_text)
           if not isolated_match or int(isolated_match.group(1))<250:
               raise SystemExit('NO real flower heads in isolated GPU bloom pass')
+          if not span_match or int(span_match.group(1))<int(0.32*860):
+              raise SystemExit('Blossom heads still confined to first 450 planting sites / left edge')
           if diagnostics != 'No WebGL draw errors':
               raise SystemExit('Mobile GPU reported WebGL draw errors: '+diagnostics)
           camera=re.search(r'<p id="cameraStatus">([^<]+)</p>',source)

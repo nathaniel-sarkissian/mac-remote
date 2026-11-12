@@ -78,8 +78,10 @@ vec3 quad(vec3 a,vec3 b,float halfWidth,int vertex){
 }
 void main(){
   int v=gl_VertexID, inst=gl_InstanceID;
-  int id=uPart==0?inst/2:uPart==2?inst/4:
-    uPart==3?inst/8:inst;
+  // Each flower is now ONE complete quad per source planting site.
+  // Old petal instancing used inst/8, which incorrectly confined all
+  // blossoms to the first 450 of 3,600 roots after the batching change.
+  int id=uPart==0?inst/2:uPart==2?inst/4:inst;
   Site s=siteAt(id);
   float rand=rand1(float(id)*.91+113.0);
   bool visible=(uPart==0)?(rand1(float(inst)*2.9+18.0)<uGrass):

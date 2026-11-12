@@ -81,17 +81,23 @@ function countWarmFlowerPixels(){
 }
 // This test samples only the isolated flower batch. It cannot pass because
 // grass is yellow or leaves are warm-colored; an absent head draws 0 pixels.
-function countFlowerOnlyPixels(seedValue){
-  const result=gpu.render({seed:seedValue,plants:100,grass:0,onlyPart:3});
-  const bg= gpu.gl.getParameter(gpu.gl.COLOR_CLEAR_VALUE);
+function measureFlowerOnly(seedValue){
+  gpu.render({seed:seedValue,plants:100,grass:0,onlyPart:3});
+  const bg=gpu.gl.getParameter(gpu.gl.COLOR_CLEAR_VALUE);
   const bytes=new Uint8Array(canvas.width*canvas.height*4);
   gpu.gl.readPixels(0,0,canvas.width,canvas.height,gpu.gl.RGBA,gpu.gl.UNSIGNED_BYTE,bytes);
   const rgb=[bg[0]*255,bg[1]*255,bg[2]*255];
-  let colored=0;
-  for(let i=0;i<bytes.length;i+=4)
+  let colored=0,minX=canvas.width,maxX=-1;
+  for(let i=0;i<bytes.length;i+=4){
     if(Math.max(Math.abs(bytes[i]-rgb[0]),Math.abs(bytes[i+1]-rgb[1]),
-       Math.abs(bytes[i+2]-rgb[2]))>45)colored++;
-  return colored;
+      Math.abs(bytes[i+2]-rgb[2]))>45){
+      colored++;
+      const x=(i/4)%canvas.width;
+      minX=Math.min(minX,x);
+      maxX=Math.max(maxX,x);
+    }
+  }
+  return {colored,spanPx:maxX<0?0:maxX-minX+1};
 }
 if(urlOptions.has('smoke')){
   // Draw the actual full scene, then a grass-free plant-only scene. A renderer
@@ -100,11 +106,14 @@ if(urlOptions.has('smoke')){
   const fullBlooms=countWarmFlowerPixels();
   gpu.render({seed,plants:100,grass:0});
   const bareBlooms=countWarmFlowerPixels();
-  const heads=countFlowerOnlyPixels(seed);
-  $('flowerOnlyPixels').textContent=heads+' FLOWER-ONLY';
+  const heads=measureFlowerOnly(seed);
+  $('flowerOnlyPixels').textContent=heads.colored+' FLOWER-ONLY';
+  $('flowerSpanPixels').textContent=heads.spanPx+' PX SPAN';
   $('bloomPixels').textContent=fullBlooms+' FULL / '+bareBlooms+' NO-GRASS';
-  if(fullBlooms<16||bareBlooms<16||heads<250)
-    throw new Error('GPU plant visibility regression: '+$('bloomPixels').textContent);
+  if(fullBlooms<16||bareBlooms<16||heads.colored<250||
+      (gpu.compact&&heads.spanPx<canvas.width*.32))
+    throw new Error('GPU blossom coverage regression: '+
+      $('flowerOnlyPixels').textContent+' / '+$('flowerSpanPixels').textContent);
   if(!urlOptions.has('userView')){
     gpu.camera.orbit(60,-35);
     gpu.camera.pan(30,-15,canvas.clientWidth,canvas.clientHeight);
