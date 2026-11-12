@@ -32,3 +32,39 @@ jobs:
       - name: Check whether a real headless browser is available
         run: |
           command -v google-chrome || command -v chromium || command -v chromium-browser || echo 'No browser installed; skipping optional GPU browser test.'
+      - name: Headless Chrome DOM and canvas smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          url=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/bcba817fbeab9ab03a1c5b9c608723c0c416ff96/index.html
+          timeout 100s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
+            --disable-gpu-sandbox --virtual-time-budget=30000 \
+            --window-size=1280,820 --dump-dom "$url" > /tmp/meadow-dom.html 2>/tmp/meadow-chrome.err
+          python3 - <<'PY'
+          import html,re
+          source=open('/tmp/meadow-dom.html').read()
+          m=re.search(r'<span id="stats">([^<]+)</span>',source)
+          print('Rendered stats:',html.unescape(m.group(1)) if m else '(not found)')
+          if not m or 'PLANTS' not in m.group(1) or 'MARKS' not in m.group(1) or '100 PLANTS' not in m.group(1):
+              print('Browser stderr:',open('/tmp/meadow-chrome.err').read()[-1500:])
+              raise SystemExit('The app failed to initialize under headless Chrome')
+          if 'id="error" class="error" hidden' not in source:
+              raise SystemExit('The app showed a runtime error')
+          print('Headless Chrome populated the full original-geometry render state')
+          PY
+      - name: Capture actual software-WebGL screenshot
+        shell: bash
+        run: |
+          timeout 100s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
+            --disable-gpu-sandbox --virtual-time-budget=30000 --window-size=1280,820 \
+            --screenshot=/tmp/nts-hatch-screenshot.png \
+            https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/bcba817fbeab9ab03a1c5b9c608723c0c416ff96/index.html \
+            >/dev/null 2>/tmp/chrome-screenshot.err
+          test -s /tmp/nts-hatch-screenshot.png
+          file /tmp/nts-hatch-screenshot.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: never-the-same-hatch-browser
+          path: /tmp/nts-hatch-screenshot.png
