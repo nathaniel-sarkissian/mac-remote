@@ -13,7 +13,7 @@ jobs:
         run: |
           set -euo pipefail
           base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/${GITHUB_SHA}
-          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js; do
+          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js src/gpu-meadow-faithful.js; do
             header=$(mktemp)
             body=$(mktemp)
             status=$(curl -L -sS -o "$body" -D "$header" -w '%{http_code}' --retry 2 --connect-timeout 15 --max-time 60 "$base/$file")
@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/${GITHUB_SHA}
           mkdir -p /tmp/nts-local/src
-          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js; do
+          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js src/gpu-meadow-faithful.js; do
             curl -fLSs --retry 2 --connect-timeout 15 --max-time 60 "$base/$file" -o "/tmp/nts-local/$file"
           done
           # The CDN presents a confirmation page to automated HTML navigations.
@@ -140,9 +140,9 @@ jobs:
           m=re.fullmatch(r'(\d+) FULL / (\d+) NO-GRASS',f)
           print('Mobile Chrome GPU flower pixels:',f)
           print('Mobile shader geometry:',t)
-          if not status or 'MOBILE FLOWERS' not in status.group(1):
+          if not status or 'ORIGINAL 3D GEOMETRY' not in status.group(1):
               print('Browser GPU HTML:',source[-1400:])
-              raise SystemExit('Phone GPU renderer did not use compact flower shader')
+              raise SystemExit('Phone GPU renderer did not use source 2025 geometry shader')
           errors=re.search(r'<p id="gpuErrors">([^<]*)</p>',source)
           diagnostics=html.unescape(errors.group(1)) if errors else '(missing)'
           print('Mobile GPU draw diagnostics:',diagnostics)
@@ -174,7 +174,7 @@ jobs:
             --screenshot=/tmp/nts-gpu-mobile.png "$mobileurl" >/dev/null 2>/tmp/gpu-mobile-image.err
           test -s /tmp/nts-gpu-mobile.png
           file /tmp/nts-gpu-mobile.png
-          # The separate flower-only frame proves petal rosettes exist,
+          # The flower-only frame proves real source petal polygons exist,
           # distinct from yellow foliage and grass pixel counts.
           flowerurl="http://127.0.0.1:8765/gpu.html?smoke=1&focus=1&userView=1&headsOnly=1"
           timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \

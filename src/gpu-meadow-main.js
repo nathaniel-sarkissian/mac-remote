@@ -44,8 +44,7 @@ $('regenerate').addEventListener('click',()=>{
   $('seed').textContent=String(seed);
 });
 $('seed').textContent=String(seed);
-$('backend').textContent=gpu.compact?
-  'WEBGL2 / MOBILE FLOWERS':'WEBGL2 / SOURCE GEOMETRY';
+$('backend').textContent='WEBGL2 / ORIGINAL 3D GEOMETRY';
 $('geometry').textContent=GPU_MEADOW_SPEC.plants.toLocaleString()+' PLANT INSTANCES · '+GPU_MEADOW_SPEC.grassAttempts.toLocaleString()+' GRASS ATTEMPTS · '+GPU_MEADOW_SPEC.flowerSpecies+' SOURCE SPECIES · 0 CPU POLYGONS';
 function loop(now){
   if(animate.checked)seed=(seed+1)%100000;

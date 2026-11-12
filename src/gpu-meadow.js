@@ -3,8 +3,10 @@
 // by one fragment-shader draw per new seed. Leaves/petals are instanced by the
 // vertex shader; no CPU polygons, hatch fragments or GPU readbacks.
 import {OrbitCamera} from './gpu-orbit-camera.js';
-import {GPU_MEADOW_COMPACT_VERTEX,GPU_MEADOW_COMPACT_FRAGMENT,GPU_MEADOW_COMPACT_BATCHES}
-  from './gpu-meadow-mobile.js';
+import {
+  SOURCE_GPU_VERTEX,SOURCE_GPU_BATCHES,
+  SOURCE_STEM_PREPASS_VERTEX,SOURCE_STEM_PREPASS_FRAGMENT,SOURCE_STEM_JOINTS
+} from './gpu-meadow-faithful.js';
 import {
   GPU_MEADOW_VERTEX,GPU_MEADOW_PREPASS_VERTEX,GPU_MEADOW_PREPASS_FRAGMENT,
   originalSceneTraits
@@ -13,20 +15,11 @@ export {GPU_MEADOW_VERTEX,originalSceneTraits} from './gpu-meadow-geometry.js';
 
 export const GPU_MEADOW_SPEC=Object.freeze({
   grid:60,plants:3600,grassAttempts:7200,stemSegments:12,
-  leavesPerPlant:12,petalsPerPlant:13,diskLayers:3,ringPoints:13,flowerSpecies:6
+  leavesPerPlant:16,petalsPerPlant:13,diskLayers:3,ringPoints:13,flowerSpecies:6
 });
-export const GPU_MEADOW_BATCHES=Object.freeze([
-  {name:'grass',part:0,mode:'triangles',vertices:3,instances:GPU_MEADOW_SPEC.grassAttempts},
-  {name:'stems',part:1,mode:'triangles',vertices:GPU_MEADOW_SPEC.stemSegments*6,instances:GPU_MEADOW_SPEC.plants},
-  // Render each entire leaf, petal, or disk as one 15-vertex fan rather than
-  // submitting 39 duplicate vertex evaluations for its 13 triangles.
-  {name:'leaves',part:2,mode:'fan',vertices:GPU_MEADOW_SPEC.ringPoints+2,
-    instances:GPU_MEADOW_SPEC.plants*GPU_MEADOW_SPEC.leavesPerPlant},
-  {name:'petals',part:3,mode:'fan',vertices:GPU_MEADOW_SPEC.ringPoints+2,
-    instances:GPU_MEADOW_SPEC.plants*GPU_MEADOW_SPEC.petalsPerPlant},
-  {name:'disks',part:4,mode:'fan',vertices:GPU_MEADOW_SPEC.ringPoints+2,
-    instances:GPU_MEADOW_SPEC.plants*GPU_MEADOW_SPEC.diskLayers}
-]);
+// All platforms now draw the archived source's 3D petal/leaf outlines,
+// incrementally grown stems and six-sided flower disks; no billboard path.
+export const GPU_MEADOW_BATCHES=SOURCE_GPU_BATCHES;
 // The original artwork uses thirteen samples per leaf and petal perimeter.
 // Reducing to seven on phones collapsed the curved flower geometry into
 // angular slivers. The instanced triangle-fan path already saves more than
@@ -74,20 +67,14 @@ export class GpuMeadow {
     if(!gl)throw new Error('WebGL2 required for procedural meadow generation');
     this.gl=gl;
     this.camera=new OrbitCamera();
-    this.compact=selectCompactGpu(canvas.clientWidth,
-      typeof navigator==='undefined'?'':navigator.userAgent);
-    // iPhone / small screens use a lightweight, original-species
-    // billboard-style bloom shader instead of the expensive desktop
-    // curved-mesh shader that proved unreliable on the user's Safari.
-    this.batches=this.compact?GPU_MEADOW_COMPACT_BATCHES:GPU_MEADOW_BATCHES;
-    this.program=makeProgram(gl,
-      this.compact?GPU_MEADOW_COMPACT_VERTEX:GPU_MEADOW_VERTEX,
-      this.compact?GPU_MEADOW_COMPACT_FRAGMENT:GPU_MEADOW_FRAGMENT);
+    this.compact=false;
+    this.batches=GPU_MEADOW_BATCHES;
+    this.program=makeProgram(gl,SOURCE_GPU_VERTEX,GPU_MEADOW_FRAGMENT);
     this.vao=gl.createVertexArray();
     gl.bindVertexArray(this.vao);
     this.uniforms={};
     for(const key of ['uSeed','uResolution','uZoom','uCameraRight','uCameraUp','uCameraView','uCameraTarget',
-      'uPlants','uGrass','uPart','uRingPoints','uPalette','uFlowerThreshold','uPlant0','uPlant1','uPlant2','uPlant3'])
+      'uPlants','uGrass','uPart','uRingPoints','uPalette','uFlowerThreshold','uPlant0','uPlant1','uPlant2','uPlant3','uStemXY','uStemZ'])
       this.uniforms[key]=gl.getUniformLocation(this.program,key);
     // Standard WebGL2 RGBA8 MRTs. Avoid optional floating-point framebuffer
     // extensions, preserving compatibility with iOS Safari/WebGL2.
@@ -114,11 +101,40 @@ export class GpuMeadow {
     if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)
       throw new Error('WebGL2 RGBA8 plant-atlas framebuffer is incomplete');
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    // GPU-only stem joint transform cache. A dedicated 60x(60*13)
+    // RGBA8 atlas computes the source's incremental rotations once per
+    // site and joint; all leaves, petal layers, disks and stem strokes
+    // fetch the same positions. Works without float color extensions.
+    this.stemProgram=makeProgram(gl,SOURCE_STEM_PREPASS_VERTEX,SOURCE_STEM_PREPASS_FRAGMENT);
+    this.stemVao=gl.createVertexArray();
+    this.stemUniforms={};
+    for(const name of ['uPlant0','uPlant1','uPlant2','uPlant3'])
+      this.stemUniforms[name]=gl.getUniformLocation(this.stemProgram,name);
+    this.stemFramebuffer=gl.createFramebuffer();
+    this.stemTextures=[];
+    gl.bindFramebuffer(gl.FRAMEBUFFER,this.stemFramebuffer);
+    for(let i=0;i<2;i++){
+      const texture=gl.createTexture();
+      this.stemTextures.push(texture);
+      gl.bindTexture(gl.TEXTURE_2D,texture);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,60,60*SOURCE_STEM_JOINTS,
+        0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0+i,
+        gl.TEXTURE_2D,texture,0);
+    }
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT0+1]);
+    if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)
+      throw new Error('WebGL2 GPU stem transform atlas is incomplete');
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);
     this.timerExt=gl.getExtension('EXT_disjoint_timer_query_webgl2');
     this.pendingQueries=[];
     this.frames=0;
     this.stats={cpuMs:0,gpuMs:null,triangles:0,vertices:0,drawCalls:0,instances:0,ringPoints:13,
-      mode:this.compact?'mobile-blooms':'source-geometry',glErrors:[]};
+      mode:'original-3d-geometry',glErrors:[]};
     gl.disable(gl.BLEND);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -167,6 +183,18 @@ export class GpuMeadow {
     gl.uniform1f(this.prepassUniforms.uSpeciesNoiseScale,traits.speciesNoiseScale);
     gl.uniform1iv(this.prepassUniforms['uSpeciesOrder[0]'],new Int32Array(traits.speciesOrder));
     gl.drawArrays(gl.TRIANGLES,0,3);
+    // Second GPU compute-style raster pass: generate exact source stem
+    // segment rotations and joint positions from the fresh plant atlas.
+    gl.bindFramebuffer(gl.FRAMEBUFFER,this.stemFramebuffer);
+    gl.viewport(0,0,60,60*SOURCE_STEM_JOINTS);
+    gl.useProgram(this.stemProgram);
+    gl.bindVertexArray(this.stemVao);
+    for(let i=0;i<4;i++){
+      gl.activeTexture(gl.TEXTURE0+i);
+      gl.bindTexture(gl.TEXTURE_2D,this.instanceTextures[i]);
+      gl.uniform1i(this.stemUniforms['uPlant'+i],i);
+    }
+    gl.drawArrays(gl.TRIANGLES,0,3);
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);
     gl.viewport(0,0,this.canvas.width,this.canvas.height);
     gl.enable(gl.DEPTH_TEST);
@@ -181,6 +209,12 @@ export class GpuMeadow {
       gl.bindTexture(gl.TEXTURE_2D,this.instanceTextures[i]);
       gl.uniform1i(this.uniforms['uPlant'+i],i);
     }
+    for(let i=0;i<2;i++){
+      gl.activeTexture(gl.TEXTURE0+4+i);
+      gl.bindTexture(gl.TEXTURE_2D,this.stemTextures[i]);
+    }
+    gl.uniform1i(this.uniforms.uStemXY,4);
+    gl.uniform1i(this.uniforms.uStemZ,5);
     gl.uniform1i(this.uniforms.uPalette,traits.palette);
     gl.uniform1f(this.uniforms.uFlowerThreshold,traits.flowerThreshold);
     gl.uniform1f(this.uniforms.uSeed,seed);
@@ -199,14 +233,13 @@ export class GpuMeadow {
     for(const batch of this.batches){
       if(onlyPart!==null&&batch.part!==onlyPart)continue;
       gl.uniform1i(this.uniforms.uPart,batch.part);
-      // Original grass never occludes. For the low-cost iPhone path, keep
-      // flower petals/disks in front of foliage so a dense field never
-      // reduces a meadow to grass triangles.
-      if(this.compact&&batch.part>=3)gl.disable(gl.DEPTH_TEST);
-      else gl.enable(gl.DEPTH_TEST);
-      gl.depthMask(batch.part!==0&&!(this.compact&&batch.part>=3));
+      // The original source's grassShape is explicitly non-occluding.
+      // All 3D plant polygons, including layered petals, participate in
+      // the depth buffer. No detached screen-facing flower overlays.
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthMask(batch.part!==0);
       const fan=batch.mode==='fan';
-      const count=this.compact?batch.vertices:fan?ring+2:batch.vertices;
+      const count=batch.vertices;
       gl.drawArraysInstanced(fan?gl.TRIANGLE_FAN:gl.TRIANGLES,0,count,batch.instances);
       triangles+=(fan?count-2:count/3)*batch.instances;
       vertices+=count*batch.instances;
@@ -223,7 +256,7 @@ export class GpuMeadow {
     if(query){gl.endQuery(ext.TIME_ELAPSED_EXT);this.pendingQueries.push(query);}
     this.frames++;
     Object.assign(this.stats,{cpuMs:performance.now()-start,triangles,vertices,
-      drawCalls:this.batches.length+1,instances,ringPoints:ring});
+      drawCalls:this.batches.length+2,instances,ringPoints:ring});
     return this.stats;
   }
   dispose(){
@@ -231,10 +264,14 @@ export class GpuMeadow {
     for(const q of this.pendingQueries)gl.deleteQuery(q);
     gl.deleteVertexArray(this.vao);
     gl.deleteVertexArray(this.prepassVao);
+    gl.deleteVertexArray(this.stemVao);
     gl.deleteProgram(this.program);
     gl.deleteProgram(this.prepassProgram);
+    gl.deleteProgram(this.stemProgram);
     for(const texture of this.instanceTextures)gl.deleteTexture(texture);
+    for(const texture of this.stemTextures)gl.deleteTexture(texture);
     gl.deleteFramebuffer(this.instanceFramebuffer);
+    gl.deleteFramebuffer(this.stemFramebuffer);
     this.pendingQueries=[];
   }
 }

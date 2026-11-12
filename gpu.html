@@ -27,7 +27,7 @@
  <div class="brand">NTS <span>/</span> GPU</div>
  <div class="eyebrow">PERFORMANCE STUDY / PHASE 01</div>
  <h1>GPU<br/><em>Meadow.</em></h1>
- <p class="lede">The original meadow's six flower species, clustered growth, curved leaves, layered petals, grass and steep terrain, reconstructed on the GPU. Hatching comes next.</p>
+ <p class="lede">Original procedural geometry on the GPU: incremental curved stems, 13-point leaves and petals, layered flower heads, six-sided disks and terrain grass.</p>
  <div class="section">01 — SCENE CONTROLS</div>
  <label class="field">Plants <output id="plantDensityOut">100%</output><input id="plantDensity" type="range" min="0" max="100" step="1" value="100"/></label>
  <label class="field">Grass <output id="grassDensityOut">100%</output><input id="grassDensity" type="range" min="0" max="100" step="1" value="100"/></label>
@@ -41,12 +41,12 @@
  <div class="metrics"><div><small>FULL-FRAME RATE</small><b id="fps">—</b></div><div><small>CPU SUBMISSION</small><b id="cpu">—</b></div></div>
  <div class="status"><strong id="backend">Initializing GPU…</strong><p id="gpu">Waiting for GPU timer…</p><p id="geometry"></p><p id="triangles"></p><p id="gpuErrors"></p><p id="bloomPixels" hidden></p><p id="flowerOnlyPixels" hidden></p><p id="flowerSpanPixels" hidden></p>Seed <span id="seed">2611</span></div>
  <div class="section">04 — NEXT MILESTONE</div>
- <p class="details">Source-based GPU scene: original 60 × 60 planting structure, the six source flower species and per-species palettes, age and stem-count rules, noise-clustered flower selection, sloped 100 × 175 terrain samples, two grass attempts per site, and 13-vertex curved leaf and petal outlines with flower head layers. Uses GPU procedural noise rather than the original OpenSimplex permutation, and approximate stem curvature, so it does not reproduce exact NFT seeds. Geometry-only, without hatching. The original CPU-occluded hatching renderer is preserved.</p>
+ <p class="details">Original geometry code reconstructed on the GPU: 60 × 60 planting sites, six flower species, exact 13-point 3D leaf and petal shapes, species-specific petal sizes and layers, exact incremental stem-angle integration, six-sided flower disks and screen-plane grass triangles. A GPU stem atlas caches each growth step. Noise approximates the original seeded OpenSimplex field so individual editions will differ. Geometry-only, with original CPU hatching still available separately.</p>
  <div class="source"><a href="./index.html">Original hatched meadow</a><span>·</span><a href="https://verse.works/series/never-the-same-by-nat-sarkissian" target="_blank" rel="noopener">2025 source</a></div>
 </aside>
 <main class="main"><div class="topbar"><span>SHADER-GENERATED SCENE / FULL REGENERATION EACH FRAME</span><span>HATCHING NEXT</span></div>
  <div class="stage"><canvas id="canvas" aria-label="Procedurally GPU-generated flower meadow. Drag to orbit, right or shift drag to pan, scroll or pinch to zoom."></canvas><div id="error" class="error" hidden></div><div class="corner">3600 PLANTING SITES · WEBGL2</div></div>
- <footer><span>GPU TERRAIN + PLANT ATLAS / 1 PREPASS + 5 INSTANCED DRAWS</span><span>NEW SEED EVERY FRAME WHEN ENABLED</span></footer>
+ <footer><span>GPU TRAITS + STEM JOINTS / 2 PREPASSES + 5 INSTANCED DRAWS</span><span>NEW SEED EVERY FRAME WHEN ENABLED</span></footer>
 </main></div>
 <script type="module" src="./src/gpu-meadow-main.js"></script>
 </body></html>
