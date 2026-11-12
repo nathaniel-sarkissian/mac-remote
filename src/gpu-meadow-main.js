@@ -202,9 +202,14 @@ function loop(now){
       (rendered*1000/(now-sampleStart)).toFixed(1)+' FPS':'STATIC';
     rendered=0;sampleStart=now;
     if(lastResult){
-      $('cpu').textContent=lastResult.cpuMs.toFixed(2)+' ms last draw';
-      $('gpu').textContent=lastResult.gpuMs==null?
-        'GPU timer unavailable':lastResult.gpuMs.toFixed(2)+' ms GPU';
+      $('cpu').textContent=lastResult.cpuMs.toFixed(2)+' ms '+
+        (lastResult.mode==='original-source-cached-canvas2d'?
+          (lastResult.rebuiltAtlas?'cache build':'cached camera draw'):'last draw');
+      $('gpu').textContent=lastResult.mode==='original-source-cached-canvas2d'?
+        'ORIGINAL GEOMETRY CACHED · '+(lastResult.atlasPixels/1000000).toFixed(1)+
+          'M pixels · 1 image blit per camera move':
+        (lastResult.gpuMs==null?'GPU timer unavailable':
+          lastResult.gpuMs.toFixed(2)+' ms GPU');
       $('triangles').textContent=(lastResult.triangles||0).toLocaleString()+
         ' GPU TRIANGLES · '+lastResult.mode;
     }
@@ -248,6 +253,24 @@ function measureFlowerOnly(seedValue){
 if(urlOptions.has('smoke')&&selectedRenderer()==='original'){
   showRenderer('original');
   const result=sourceRenderer.render(sourceOptions());
+  // Measure actual camera interactions with the entire original source
+  // present. None of these 12 moves may regenerate/repaint polygons.
+  const samples=[];
+  for(let i=0;i<12;i++){
+    const start=performance.now();
+    const cached=sourceRenderer.render({
+      ...sourceOptions(),panX:i*.35,panY:-i*.16,zoom:1+i*.03
+    });
+    samples.push(performance.now()-start);
+    if(cached.rebuiltAtlas||cached.drawCalls!==1)
+      throw new Error('Camera movement unexpectedly rerasterized the meadow');
+  }
+  sourceRenderer.render(sourceOptions()); // restore the screenshot camera
+  const avg=samples.reduce((a,b)=>a+b,0)/samples.length;
+  const worst=Math.max(...samples);
+  $('cachedPerf').textContent='CACHED '+avg.toFixed(2)+' ms AVG / '+
+    worst.toFixed(2)+' ms MAX / INITIAL '+result.frameMs.toFixed(2)+
+    ' ms / 12 CACHE HITS / 1 DRAW EACH';
   $('backend').textContent='CANVAS2D / ORIGINAL 2025 GEOMETRY / READY';
   $('rendererStatus').textContent='ORIGINAL SOURCE VERIFIED';
   $('sourceStats').textContent='SOURCE: '+result.petals+' PETALS · '+

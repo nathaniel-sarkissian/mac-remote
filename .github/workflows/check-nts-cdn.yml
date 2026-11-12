@@ -159,6 +159,17 @@ jobs:
           stat=html.unescape(counts.group(1)) if counts else ''
           print('Original source Canvas2D renderer:',state)
           print('Actual recovered 2025 shape counts:',stat)
+          cached=re.search(r'<p id="cachedPerf"[^>]*>([^<]*)</p>',source)
+          perf=html.unescape(cached.group(1)) if cached else ''
+          print('Real Chrome cached Canvas2D pan/zoom benchmark:',perf)
+          measured=re.fullmatch(r'CACHED ([0-9.]+) ms AVG / ([0-9.]+) ms MAX / INITIAL ([0-9.]+) ms / 12 CACHE HITS / 1 DRAW EACH',perf)
+          if not measured:
+              raise SystemExit('Source render failed cache reuse benchmark')
+          average,worst,initial=map(float,measured.groups())
+          if average>150 or worst>500:
+              raise SystemExit('Original Canvas2D cache view too slow for interaction: '+perf)
+          if initial>100 and average>=initial*.65:
+              raise SystemExit('Camera cache provides inadequate speedup: '+perf)
           matches=[re.search(r'(\d+) '+name,stat) for name in ['PETALS','CENTERS','LEAVES','STEM PATHS']]
           if 'CANVAS2D / ORIGINAL 2025 GEOMETRY / READY' not in state or not all(matches) or min(int(x.group(1)) for x in matches)<100:
               print('Page tail:',source[-2500:])

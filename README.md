@@ -81,3 +81,8 @@ The GPU prototype repeatedly rendered only grass on the user's Windows laptop, d
 Source commit: https://github.com/nathaniel-sarkissian/hatch-render/commit/9009f654ec30515997bfc158a49a1d9e7a2e3df7
 
 Release QA correction: expected version-label assertions now match the original-source reliability page, and GPU smoke status identifies the selected GPU backend. Source: https://github.com/nathaniel-sarkissian/hatch-render/commit/2ddc2a8b69c13f97bc774dcb50910f34464b6c37
+
+## Fast cached Canvas2D pan and zoom (Nov 12, 2026)
+
+The recovered original source polygon renderer was slow because every camera redraw issued roughly 50,000 independent Canvas2D path/fill/stroke operations. The new source renderer rasterizes the full original geometric scene once into a transparent, memory-limited world-space canvas cache, then uses **one `drawImage` blit** for all pan/zoom/resize interactions. A new seed, plant density, grass density, selected layer, or flower-foreground change rebuilds the cache. Camera changes do **not** regenerate the recovered source, rerasterize polygons, or rebuild the cache. The atlas includes all source geometry bounds and is capped at 4096 pixels per dimension and 12 million pixels to protect integrated GPUs. Startup or new-seed rebuild still incurs the full procedural cost; this optimization targets interactive view changes, not 30fps full-scene generation. A 12-camera-move Chrome benchmark is checked in CDN release CI and rejects cache regressions.
+Canonical source commit: https://github.com/nathaniel-sarkissian/hatch-render/commit/d5cf0fe394bee28b393c13924d2f0648fc8d9dce
