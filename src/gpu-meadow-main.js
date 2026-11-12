@@ -85,7 +85,7 @@ const urlOptions=new URLSearchParams(window.location.search);
 if(urlOptions.has('focus'))document.documentElement.classList.add('scene-focus');
 if(['all','flowers','plants','grass'].includes(urlOptions.get('layer')))
   layerMode.value=urlOptions.get('layer');
-if(['auto','original','gpu'].includes(urlOptions.get('renderer')))
+if(['auto','original','fast','gpu'].includes(urlOptions.get('renderer')))
   rendererMode.value=urlOptions.get('renderer');
 if(urlOptions.has('userView')){
   gpu.camera.yaw=185*Math.PI/180;
