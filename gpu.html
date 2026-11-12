@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#f6f4ec"/>
+<meta name="description" content="Experimental GPU-generated 60x60 plant meadow. Geometry is calculated directly in WebGL2 vertex shaders, with no CPU polygon scene."/>
+<title>Never the Same — GPU Geometry Study</title>
+<link rel="stylesheet" href="./src/never-the-same.css"/>
+<style>
+#studio .controls{max-height:100vh} .metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:22px}
+.metrics div{border:1px solid #d6dbce;padding:12px;min-width:0}.metrics b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.metrics small{font-size:9px;color:#738071;letter-spacing:.07em}
+#regenerate{width:100%;padding:12px;border:0;background:#334b3b;color:#fff;font-size:12px;cursor:pointer;margin-top:17px}
+.status{font-size:10px;color:#677b69;line-height:1.7;margin-top:17px}.status strong{color:#314d35}
+@media(max-width:800px){.metrics b{font-size:15px}}
+</style>
+</head><body>
+<div id="studio">
+<aside class="controls">
+ <div class="brand">NTS <span>/</span> GPU</div>
+ <div class="eyebrow">PERFORMANCE STUDY / PHASE 01</div>
+ <h1>GPU<br/><em>Meadow.</em></h1>
+ <p class="lede">A procedural meadow generated directly by WebGL2 vertex shaders. No CPU scene construction, polygon arrays, or geometry readback.</p>
+ <div class="section">01 — SCENE CONTROLS</div>
+ <label class="field">Plants <output id="plantDensityOut">100%</output><input id="plantDensity" type="range" min="0" max="100" step="1" value="100"/></label>
+ <label class="field">Grass <output id="grassDensityOut">100%</output><input id="grassDensity" type="range" min="0" max="100" step="1" value="100"/></label>
+ <label class="switch"><span>Generate a new seed every frame<small>Measures full GPU scene generation and drawing, not cached-camera FPS</small></span><input type="checkbox" id="animate" checked/></label>
+ <button id="regenerate">New random meadow</button>
+ <div class="section">02 — LIVE PERFORMANCE</div>
+ <div class="metrics"><div><small>FULL-FRAME RATE</small><b id="fps">—</b></div><div><small>CPU SUBMISSION</small><b id="cpu">—</b></div></div>
+ <div class="status"><strong id="backend">Initializing GPU…</strong><p id="gpu">Waiting for GPU timer…</p><p id="geometry"></p><p id="triangles"></p>Seed <span id="seed">2611</span></div>
+ <div class="section">03 — NEXT MILESTONE</div>
+ <p class="details">Experimental geometry-only port. Uses the original 60×60 placement structure, two grass attempts per site, seven flower variants and 13-point leaf/petal boundaries. Terrain, growth and bloom are approximated with GPU noise; it is not pixel-identical to the 2025 artwork. No hatching yet. The original CPU-occluded hatch renderer remains unchanged.</p>
+ <div class="source"><a href="./index.html">Original hatched meadow</a><span>·</span><a href="https://verse.works/series/never-the-same-by-nat-sarkissian" target="_blank" rel="noopener">2025 source</a></div>
+</aside>
+<main class="main"><div class="topbar"><span>SHADER-GENERATED SCENE / FULL REGENERATION EACH FRAME</span><span>HATCHING NEXT</span></div>
+ <div class="stage"><canvas id="canvas" aria-label="Procedurally GPU-generated flower meadow"></canvas><div id="error" class="error" hidden></div><div class="corner">3600 PLANTING SITES · WEBGL2</div></div>
+ <footer><span>GPU GEOMETRY / 5 INSTANCED DRAW CALLS</span><span>NEW SEED EVERY FRAME WHEN ENABLED</span></footer>
+</main></div>
+<script type="module" src="./src/gpu-meadow-main.js"></script>
+</body></html>
