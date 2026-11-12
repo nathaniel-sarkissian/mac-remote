@@ -35,3 +35,5 @@ The GPU geometry study now follows the recovered original's 60 × 60 field, its 
 Canonical source: https://github.com/nathaniel-sarkissian/hatch-render/commit/4c137eb28f17f637bff6c693cebb47cf8933eb6a
 
 GLSL shader compile correction: https://github.com/nathaniel-sarkissian/hatch-render/commit/4d629dcf2842b481a53a5ede8891256cc7cee2cb
+
+Default camera now reproduces the original YZ 45° projection and source-centered 75×75 framing instead of tilting XY: https://github.com/nathaniel-sarkissian/hatch-render/commit/f110450b517ad124579565a7ce66994f73a28cc8

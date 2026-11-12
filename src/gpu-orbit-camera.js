@@ -1,7 +1,7 @@
 // Orbit / pan / zoom is camera-only; plant geometry remains generated
 // entirely by the vertex shader from gl_VertexID and gl_InstanceID.
 export const CAMERA_DEFAULT=Object.freeze({
-  yaw:Math.PI,pitch:0.06,zoom:1,target:Object.freeze([0,0,-25])
+  yaw:Math.PI,pitch:Math.PI/4,zoom:1,target:Object.freeze([0,0,0])
 });
 export const MIN_PITCH=0.06;
 export const MAX_PITCH=Math.PI/2-0.045;
@@ -10,14 +10,12 @@ export const MAX_ZOOM=12;
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
 export function orbitBasis(yaw,pitch){
   const a=Math.sin(yaw),b=Math.cos(yaw),c=Math.sin(pitch),d=Math.cos(pitch);
-  const right=[b,0,-a],up=[-a*c,d,-b*c];
-  // Original _3dTo2d projects an XY rotation of 45 degrees, viewing from
-  // negative Z. A fixed camera roll reproduces its initial composition,
-  // while yaw/pitch still orbit freely around the 3D meadow.
-  const roll=Math.PI/4,cr=Math.cos(roll),sr=Math.sin(roll);
+  // Source _3dTo2d uses _rotate(v,PI/4,0,0): a rotation in the YZ
+  // plane around X, NOT an XY rotation. Default yaw=PI/pitch=PI/4
+  // reproduces original source X and Y projection without camera roll.
   return {
-    right:right.map((v,i)=>v*cr+up[i]*sr),
-    up:up.map((v,i)=>v*cr-right[i]*sr),
+    right:[b,0,-a],
+    up:[-a*c,d,-b*c],
     view:[a*d,c,b*d]
   };
 }

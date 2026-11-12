@@ -98,7 +98,7 @@ jobs:
           error=re.search(r'<div id="error"[^>]*>(.*?)</div>',source,re.S)
           if error:
               print('Browser GPU error:',html.unescape(error.group(1))[:6000])
-          if 'ZOOM 125%' not in camera_value or 'AZ 204' not in camera_value or 'EL 15' not in camera_value:
+          if 'ZOOM 125%' not in camera_value or 'AZ 204' not in camera_value or 'EL 57' not in camera_value:
               print('Browser stderr:',open('/tmp/gpu-chrome.err').read()[-2400:])
               raise SystemExit('GPU camera shader controls did not update in Chrome')
           if not status or '/ READY' not in status.group(1) or not triangles or 'GENERATED TRIANGLES / FRAME' not in triangles.group(1):

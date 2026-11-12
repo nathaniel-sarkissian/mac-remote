@@ -1206,9 +1206,10 @@ void main(){
     position=localDisk(p,point);
     vColor=diskInk(p.species,uPalette);
   }
-  // The original source is Y-down, then rotates XY by 45 degrees for its
-  // orthographic view. In a proper orbit scene we invert world X/Y here and
-  // use a +45-degree camera roll to reproduce that same view at reset.
+  // The source uses Y-down coordinates and rotates YZ by 45 degrees
+  // (_rotate(v,PI/4,0,0)) before 2D projection. Invert source X/Y into
+  // an up-positive, yaw=PI world basis. Camera pitch=PI/4, roll=0
+  // then reproduces its fixed original 75x75 composition at reset.
   vec3 world=vec3(-position.x,-position.y,position.z);
   vec3 rel=world-uCameraTarget;
   vec2 viewPlane=vec2(dot(rel,uCameraRight),dot(rel,uCameraUp));
