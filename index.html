@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f4f2e9" />
+  <meta name="description" content="3D flower meadow with square-capped hatches and CPU boolean occlusion." />
+  <link rel="stylesheet" href="./src/meadow.css" />
+  <title>Flower Meadow — Hatch Render</title>
+</head>
+<body>
+<div id="meadow-app">
+  <aside class="panel">
+    <div class="wordmark"><span class="flower-mark" aria-hidden="true">✳</span><span>HATCH <b>/</b> MEADOW</span></div>
+    <div class="panel-inner">
+      <p class="eyebrow">STUDY 001 <span>—</span> BOTANICAL FORMS</p>
+      <h1>A meadow,<br><em>in lines.</em></h1>
+      <p class="intro">3D flowers and triangular grass grow from an invisible, simplex-noise hillside. Each blade and petal is projected into 2D and hatched.</p>
+      <div class="section-label">01 <span>THE MEADOW</span></div>
+      <div class="field"><div class="field-top"><label for="flowers">Flowers</label><output id="flowers-value"></output></div><input id="flowers" type="range" min="12" max="180" step="1" value="85" /></div>
+      <div class="field"><div class="field-top"><label for="petals">Petals per flower</label><output id="petals-value"></output></div><input id="petals" type="range" min="4" max="16" step="1" value="9" /></div>
+      <div class="field"><div class="field-top"><label for="size">Flower scale</label><output id="size-value"></output></div><input id="size" type="range" min="0.55" max="1.7" step="0.05" value="1" /></div>
+      <div class="field"><div class="field-top"><label for="stemAngleAmplitude">Stem angle noise amplitude</label><output id="stemAngleAmplitude-value"></output></div><input id="stemAngleAmplitude" type="range" min="0" max="45" step="1" value="22" /><p class="hatch-note">Simplex noise tilts neighboring flower stems together. Zero disables segment noise; stems still sprout along the local ground normal.</p></div>
+      <div class="field"><div class="field-top"><label for="stemNoiseScale">Stem angle noise scale</label><output id="stemNoiseScale-value"></output></div><input id="stemNoiseScale" type="range" min="30" max="500" step="5" value="175" /></div>
+      <div class="section-label">02 <span>TERRAIN SURFACE</span></div>
+      <div class="field"><div class="field-top"><label for="slope">Slope steepness</label><output id="slope-value"></output></div><input id="slope" type="range" min="0" max="100" step="1" value="25" /><p class="hatch-note">Percent grade. Ground rises away from the camera.</p></div>
+      <div class="field"><div class="field-top"><label for="noiseScale">Simplex noise scale</label><output id="noiseScale-value"></output></div><input id="noiseScale" type="range" min="35" max="500" step="5" value="200" /><p class="hatch-note">Smaller = finer terrain undulations.</p></div>
+      <div class="field"><div class="field-top"><label for="noiseAmplitude">Simplex noise amplitude</label><output id="noiseAmplitude-value"></output></div><input id="noiseAmplitude" type="range" min="0" max="120" step="2" value="26" /></div>
+      <div class="section-label">03 <span>TRIANGULAR GRASS</span></div>
+      <div class="field"><div class="field-top"><label for="grassCount">Grass density</label><output id="grassCount-value"></output></div><input id="grassCount" type="range" min="0" max="2400" step="50" value="850" /><p class="hatch-note">Base count for flat ground. Steeper projected terrain automatically generates more blades; actual count appears below the artwork.</p></div>
+      <div class="field"><div class="field-top"><label for="grassHeight">Average tuft height</label><output id="grassHeight-value"></output></div><input id="grassHeight" type="range" min="8" max="80" step="1" value="35" /></div>
+      <div class="field"><div class="field-top"><label for="grassNoiseScale">Grass height noise scale</label><output id="grassNoiseScale-value"></output></div><input id="grassNoiseScale" type="range" min="25" max="400" step="5" value="145" /></div>
+      <div class="field"><div class="field-top"><label for="grassNoiseAmplitude">Grass height noise amplitude</label><output id="grassNoiseAmplitude-value"></output></div><input id="grassNoiseAmplitude" type="range" min="0" max="1" step="0.05" value="0.65" /><p class="hatch-note">Grass follows terrain left/right in the camera-facing plane. Vertical hatch marks follow each blade.</p></div>
+      <div class="section-label">04 <span>3D → 2D CAMERA</span></div>
+      <div class="field"><div class="field-top"><label for="elevation">View elevation</label><output id="elevation-value"></output></div><input id="elevation" type="range" min="8" max="75" step="1" value="38" /></div>
+      <div class="field"><div class="field-top"><label for="yaw">View rotation</label><output id="yaw-value"></output></div><input id="yaw" type="range" min="-45" max="45" step="1" value="0" /></div>
+      <div class="section-label">05 <span>HATCHING</span></div>
+      <div class="field"><div class="field-top"><label for="angle">Center angle</label><output id="angle-value"></output></div><input id="angle" type="range" min="0" max="180" step="1" value="32" /></div>
+      <div class="field"><div class="field-top"><label for="angleSpread">Per-polygon angle spread</label><output id="angleSpread-value"></output></div><input id="angleSpread" type="range" min="0" max="90" step="1" value="18" /></div>
+      <div class="field"><div class="field-top"><label for="angleJitter">Per-stroke angle jitter</label><output id="angleJitter-value"></output></div><input id="angleJitter" type="range" min="0" max="20" step="0.5" value="0.5" /></div>
+      <div class="field"><div class="field-top"><label for="placementJitter">Placement jitter</label><output id="placementJitter-value"></output></div><input id="placementJitter" type="range" min="0" max="8" step="0.1" value="0.2" /></div>
+      <div class="field"><div class="field-top"><label for="lengthJitter">Length jitter</label><output id="lengthJitter-value"></output></div><input id="lengthJitter" type="range" min="0" max="100" step="1" value="7" /></div>
+      <label class="toggle"><span>Connect hatches<small>Join adjacent hatch segments end-to-start</small></span><input id="zigzag" type="checkbox" /></label>
+      <div class="field"><div class="field-top"><label for="spacing">Hatch spacing</label><output id="spacing-value"></output></div><input id="spacing" type="range" min="1" max="22" step="0.1" value="2.9" /></div>
+      <div class="field"><div class="field-top"><label for="lineWidth">Hatch thickness</label><output id="lineWidth-value"></output></div><input id="lineWidth" type="range" min="0.3" max="16" step="0.1" value="1.1" /></div>
+      <p class="hatch-note">Jitter is applied after the original hatch segments are clipped. Grass hatch direction follows its projected upward axis rather than the flower hatch angle.</p>
+      <div class="section-label">06 <span>INK &amp; VISIBILITY</span></div>
+      <label class="toggle"><span>Different ink per flower<small>Botanical palette for petals and centers</small></span><input id="depth-colors" type="checkbox" checked /></label>
+      <div class="field"><div class="field-top"><label for="ink">Single ink</label></div><select id="ink" aria-label="Choose single hatch ink"><option value="#455548" selected>Meadow green</option><option value="#242d30">Graphite</option><option value="#2d4a69">Prussian blue</option><option value="#934f3a">Burnt sienna</option><option value="#2e5a4d">Forest green</option></select><p class="hatch-note">Choosing a single ink switches off the botanical palette.</p></div>
+      <label class="toggle"><span>Boolean stroke occlusion<small>Clip the full width of every stroke against nearer polygons, with square ends. No GPU depth masking.</small></span><input id="occlusion" type="checkbox" checked /></label>
+      <label class="toggle"><span>Polygon outlines</span><input id="outlines" type="checkbox" checked /></label>
+      <button id="reset-hatch" class="secondary" type="button">Reset hatch settings</button>
+      <button id="regenerate" class="primary">↻ &nbsp; Generate new meadow</button>
+      <a class="engine-link" href="https://hatch-render.vercel.app/">← Back to the hatch renderer</a>
+    </div>
+  </aside>
+  <main class="viewer">
+    <header class="topbar"><div><span class="eyebrow">PROCEDURAL BOTANICAL DRAWING</span><div class="scene-title">Flower meadow <span>/ 3D projection</span></div></div><button id="fit" class="fit">Fit artwork ↗</button></header>
+    <div class="artwork"><canvas id="canvas" aria-label="Hatched meadow of 3D projected flowers. Drag to pan, pinch or scroll to zoom."></canvas><div id="error" class="error" hidden></div><div class="art-corner top-left">PLATE NO. 001 <span>·</span> GENERATIVE BOTANICAL STUDY</div><div class="art-corner top-right" id="seed-label"></div><div class="bottom-left">DRAG TO PAN <span>·</span> SCROLL / PINCH TO ZOOM</div><div class="zoom"><button id="minus" aria-label="Zoom out">−</button><span id="zoom-label">100%</span><button id="plus" aria-label="Zoom in">+</button></div></div>
+    <footer class="bottom-bar"><span id="stats">PROJECTING 3D FLOWERS...</span><span>3D POLYGONS → 2D PROJECTION → HATCH RENDER</span></footer>
+  </main>
+</div>
+<script type="module" src="./src/meadow.js"></script>
+</body>
+</html>
