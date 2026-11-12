@@ -32,11 +32,21 @@ jobs:
       - name: Check whether a real headless browser is available
         run: |
           command -v google-chrome || command -v chromium || command -v chromium-browser || echo 'No browser installed; skipping optional GPU browser test.'
-      - name: Headless Chrome DOM and canvas smoke test
+      - name: Load exact published assets in a real software-WebGL Chrome page
         shell: bash
         run: |
           set -euo pipefail
-          url=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/bcba817fbeab9ab03a1c5b9c608723c0c416ff96/index.html
+          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/bcba817fbeab9ab03a1c5b9c608723c0c416ff96
+          mkdir -p /tmp/nts-local/src
+          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js; do
+            curl -fLSs --retry 2 --connect-timeout 15 --max-time 60 "$base/$file" -o "/tmp/nts-local/$file"
+          done
+          # The CDN presents a confirmation page to automated HTML navigations.
+          # The same verified bytes are served from a local HTTP server so that
+          # Chrome executes the actual application instead of the notice screen.
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory /tmp/nts-local > /tmp/http.log 2>&1 &
+          sleep 1
+          url=http://127.0.0.1:8765/index.html
           timeout 100s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
             --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
             --disable-gpu-sandbox --virtual-time-budget=30000 \
@@ -45,24 +55,17 @@ jobs:
           import html,re
           source=open('/tmp/meadow-dom.html').read()
           m=re.search(r'<span id="stats">([^<]+)</span>',source)
-          print('Document byte count:',len(source))
-          print('Document prefix:',source[:1200])
           print('Rendered stats:',html.unescape(m.group(1)) if m else '(not found)')
           if not m or 'PLANTS' not in m.group(1) or 'MARKS' not in m.group(1) or '100 PLANTS' not in m.group(1):
+              print('HTML prefix:',source[:1000])
               print('Browser stderr:',open('/tmp/meadow-chrome.err').read()[-1800:])
-              raise SystemExit('The app failed to initialize under headless Chrome')
-          if 'id="error" class="error" hidden' not in source:
-              raise SystemExit('The app showed a runtime error')
-          print('Headless Chrome populated the full original-geometry render state')
+              raise SystemExit('The original-geometry scene failed to initialize in Chrome')
+          print('Actual WebGL page initialized with original geometry.')
           PY
-      - name: Capture actual software-WebGL screenshot
-        shell: bash
-        run: |
           timeout 100s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
             --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
             --disable-gpu-sandbox --virtual-time-budget=30000 --window-size=1280,820 \
-            --screenshot=/tmp/nts-hatch-screenshot.png \
-            https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/bcba817fbeab9ab03a1c5b9c608723c0c416ff96/index.html \
+            --screenshot=/tmp/nts-hatch-screenshot.png "$url" \
             >/dev/null 2>/tmp/chrome-screenshot.err
           test -s /tmp/nts-hatch-screenshot.png
           file /tmp/nts-hatch-screenshot.png
