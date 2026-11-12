@@ -3,6 +3,8 @@
 // by one fragment-shader draw per new seed. Leaves/petals are instanced by the
 // vertex shader; no CPU polygons, hatch fragments or GPU readbacks.
 import {OrbitCamera} from './gpu-orbit-camera.js';
+import {GPU_MEADOW_COMPACT_VERTEX,GPU_MEADOW_COMPACT_BATCHES}
+  from './gpu-meadow-mobile.js';
 import {
   GPU_MEADOW_VERTEX,GPU_MEADOW_PREPASS_VERTEX,GPU_MEADOW_PREPASS_FRAGMENT,
   originalSceneTraits
@@ -33,6 +35,9 @@ export function ringPointsForViewport(width,height,zoom=1){
   if(![width,height,zoom].every(Number.isFinite)||width<=0||height<=0||zoom<=0)
     throw new RangeError('Invalid GPU meadow viewport');
   return GPU_MEADOW_SPEC.ringPoints;
+}
+export function selectCompactGpu(width,userAgent=''){
+  return width<640||/iPhone|iPad|iPod/.test(userAgent);
 }
 export const GPU_MEADOW_FRAGMENT=`#version 300 es
 precision highp float;
@@ -69,7 +74,13 @@ export class GpuMeadow {
     if(!gl)throw new Error('WebGL2 required for procedural meadow generation');
     this.gl=gl;
     this.camera=new OrbitCamera();
-    this.program=makeProgram(gl);
+    this.compact=selectCompactGpu(canvas.clientWidth,
+      typeof navigator==='undefined'?'':navigator.userAgent);
+    // iPhone / small screens use a lightweight, original-species
+    // billboard-style bloom shader instead of the expensive desktop
+    // curved-mesh shader that proved unreliable on the user's Safari.
+    this.batches=this.compact?GPU_MEADOW_COMPACT_BATCHES:GPU_MEADOW_BATCHES;
+    this.program=makeProgram(gl,this.compact?GPU_MEADOW_COMPACT_VERTEX:GPU_MEADOW_VERTEX);
     this.vao=gl.createVertexArray();
     gl.bindVertexArray(this.vao);
     this.uniforms={};
@@ -104,7 +115,8 @@ export class GpuMeadow {
     this.timerExt=gl.getExtension('EXT_disjoint_timer_query_webgl2');
     this.pendingQueries=[];
     this.frames=0;
-    this.stats={cpuMs:0,gpuMs:null,triangles:0,vertices:0,drawCalls:0,instances:0,ringPoints:13};
+    this.stats={cpuMs:0,gpuMs:null,triangles:0,vertices:0,drawCalls:0,instances:0,ringPoints:13,
+      mode:this.compact?'mobile-blooms':'source-geometry',glErrors:[]};
     gl.disable(gl.BLEND);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -181,24 +193,33 @@ export class GpuMeadow {
     const ring=ringPointsForViewport(this.canvas.clientWidth,this.canvas.clientHeight,this.camera.zoom);
     gl.uniform1i(this.uniforms.uRingPoints,ring);
     let triangles=0,vertices=0,instances=0;
-    for(const batch of GPU_MEADOW_BATCHES){
+    for(const batch of this.batches){
       gl.uniform1i(this.uniforms.uPart,batch.part);
-      // Original grassShape explicitly sets occlude=false. Grass contributes
-      // color but must NEVER write scene depth or hide the flowers behind it.
-      // The previous GPU draw wrote grass to depth first; on dense mobile
-      // frames it buried the plant heads under a solid field of triangles.
-      gl.depthMask(batch.part!==0);
-      const fan=batch.mode==='fan',count=fan?ring+2:batch.vertices;
+      // Original grass never occludes. For the low-cost iPhone path, keep
+      // flower petals/disks in front of foliage so a dense field never
+      // reduces a meadow to grass triangles.
+      if(this.compact&&batch.part>=3)gl.disable(gl.DEPTH_TEST);
+      else gl.enable(gl.DEPTH_TEST);
+      gl.depthMask(batch.part!==0&&!(this.compact&&batch.part>=3));
+      const fan=batch.mode==='fan';
+      const count=this.compact?batch.vertices:fan?ring+2:batch.vertices;
       gl.drawArraysInstanced(fan?gl.TRIANGLE_FAN:gl.TRIANGLES,0,count,batch.instances);
-      triangles+=(fan?ring:count/3)*batch.instances;
+      triangles+=(fan?count-2:count/3)*batch.instances;
       vertices+=count*batch.instances;
       instances+=batch.instances;
+      // A single first-frame diagnostic is cheap and exposes iOS WebGL
+      // errors in the UI instead of silently drawing only the first pass.
+      if(this.frames===0&&typeof gl.getError==='function'){
+        const error=gl.getError();
+        if(error!==gl.NO_ERROR)this.stats.glErrors.push(batch.name+': 0x'+error.toString(16));
+      }
     }
+    gl.enable(gl.DEPTH_TEST);
     gl.depthMask(true);
     if(query){gl.endQuery(ext.TIME_ELAPSED_EXT);this.pendingQueries.push(query);}
     this.frames++;
     Object.assign(this.stats,{cpuMs:performance.now()-start,triangles,vertices,
-      drawCalls:GPU_MEADOW_BATCHES.length+1,instances,ringPoints:ring});
+      drawCalls:this.batches.length+1,instances,ringPoints:ring});
     return this.stats;
   }
   dispose(){

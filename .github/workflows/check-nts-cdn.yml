@@ -13,7 +13,7 @@ jobs:
         run: |
           set -euo pipefail
           base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/${GITHUB_SHA}
-          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js; do
+          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js; do
             header=$(mktemp)
             body=$(mktemp)
             status=$(curl -L -sS -o "$body" -D "$header" -w '%{http_code}' --retry 2 --connect-timeout 15 --max-time 60 "$base/$file")
@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/${GITHUB_SHA}
           mkdir -p /tmp/nts-local/src
-          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js; do
+          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js; do
             curl -fLSs --retry 2 --connect-timeout 15 --max-time 60 "$base/$file" -o "/tmp/nts-local/$file"
           done
           # The CDN presents a confirmation page to automated HTML navigations.
@@ -140,6 +140,14 @@ jobs:
           m=re.fullmatch(r'(\d+) FULL / (\d+) NO-GRASS',f)
           print('Mobile Chrome GPU flower pixels:',f)
           print('Mobile shader geometry:',t)
+          if not status or 'MOBILE FLOWERS' not in status.group(1):
+              print('Browser GPU HTML:',source[-1400:])
+              raise SystemExit('Phone GPU renderer did not use compact flower shader')
+          errors=re.search(r'<p id="gpuErrors">([^<]*)</p>',source)
+          diagnostics=html.unescape(errors.group(1)) if errors else '(missing)'
+          print('Mobile GPU draw diagnostics:',diagnostics)
+          if diagnostics != 'No WebGL draw errors':
+              raise SystemExit('Mobile GPU reported WebGL draw errors: '+diagnostics)
           camera=re.search(r'<p id="cameraStatus">([^<]+)</p>',source)
           angle=html.unescape(camera.group(1)) if camera else ''
           print('Reproduced iPhone camera:',angle)
