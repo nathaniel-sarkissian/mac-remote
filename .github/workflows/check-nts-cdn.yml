@@ -101,6 +101,8 @@ jobs:
           flower_only=html.unescape(isolated.group(1)) if isolated else ''
           span_text=html.unescape(span.group(1)) if span else ''
           print('Desktop isolated 3D flowers:',flower_only,'span:',span_text)
+          if 'INDEXED 3D' not in source:
+              raise SystemExit('Indexed GPU flower renderer version marker missing')
           n=re.fullmatch(r'(\d+) FLOWER-ONLY',flower_only)
           width=re.fullmatch(r'(\d+) PX SPAN',span_text)
           if not n or not width or int(n.group(1))<250 or int(width.group(1))<300:
