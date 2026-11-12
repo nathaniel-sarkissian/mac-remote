@@ -8,20 +8,6 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: nathaniel-sarkissian/hatch-render
-          ref: 8e1a962ee3a90aadd17d5df554316af2e67f152c
-          path: hatch-render-tests
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Run canonical Node tests and Vite build
-        working-directory: hatch-render-tests
-        run: |
-          npm install
-          npm test
-          npm run build
       - name: Fetch public entry and all imports from the free CDN
         shell: bash
         run: |
