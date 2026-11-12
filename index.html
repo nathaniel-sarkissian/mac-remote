@@ -10,14 +10,8 @@
     <div class="brand">NTS <span>/</span> HATCH</div>
     <div class="eyebrow">GEOMETRY STUDY · 2025 / 2026</div>
     <h1>Never the<br/><em>Same.</em></h1>
-    <p class="lede">Original wildflower, leaf, stem, and grass geometry from the 2025 generative artwork. Redrawn using the new Hatch Render engine.</p>
-    <div class="section">01 — ORIGINAL GEOMETRY</div>
-    <label class="field">Seed <input id="seed" type="number" min="1" max="4294967295" value="2611"/></label>
-    <label class="field">Plant grid <output id="gridOut"></output><input id="grid" type="range" min="3" max="21" step="1" value="10"/></label>
-    <label class="field">Grass per plant <output id="grassOut"></output><input id="grass" type="range" min="0" max="4" step="1" value="2"/></label>
-    <label class="field">Plant height <output id="heightOut"></output><input id="height" type="range" min=".6" max="1.5" step=".05" value="1"/></label>
-    <label class="field">Original palette<select id="palette"><option value="0">01 / Green</option><option value="1">02 / Teal</option><option value="2">03 / Blue</option><option value="3">04 / Gold</option></select></label>
-    <div class="section">02 — NEW HATCHING</div>
+    <p class="lede">The original 2025 meadow scene builder, drawn with the new Hatch Render engine. Only hatching is configurable.</p>
+    <div class="section">01 — HATCH SETTINGS</div>
     <label class="field">Hatch spacing <output id="spacingOut"></output><input id="spacing" type="range" min=".3" max="2.5" step=".1" value=".8"/></label>
     <label class="field">Stroke width <output id="widthOut"></output><input id="width" type="range" min=".1" max="3.2" step=".1" value=".35"/></label>
     <label class="field">Angle jitter <output id="angleJitterOut"></output><input id="angleJitter" type="range" min="0" max="16" step=".5" value=".5"/></label>
@@ -25,8 +19,8 @@
     <label class="field">Length jitter <output id="lengthJitterOut"></output><input id="lengthJitter" type="range" min="0" max="70" step="1" value="0"/></label>
     <label class="switch"><span>CPU boolean occlusion<small>Full-width polygon subtraction, square-ended strokes</small></span><input type="checkbox" id="occlusion" checked/></label>
     <label class="switch"><span>Draw outlines</span><input type="checkbox" id="outlines" /></label>
-    <button id="generate">Generate new seed</button>
-    <p class="details">No animation, texture shaders, or original raster hatcher. Seven original flower species retained.</p>
+    <button id="generate">Regenerate meadow</button>
+    <p class="details">Original 60 × 60 planting lattice, noise-driven growth, terrain and clustered grass. Plant geometry stays fixed when changing hatching. No animation or shader effects.</p>
     <div class="source"><a href="https://verse.works/series/never-the-same-by-nat-sarkissian" target="_blank" rel="noopener">Original on Verse</a> <span>·</span> <a href="https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/f1b9509909644256d866363e6f953932100ded78/index.html">Hatch Meadow</a></div>
   </aside>
   <main class="main">

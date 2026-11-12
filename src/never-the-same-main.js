@@ -6,30 +6,33 @@ const canvas=$('canvas');
 let renderer;
 try {
   renderer=new HatchRenderer(canvas,{background:'#e9e8d7',occlusion:true,
-    lineWidth:.35,spacing:.8,color:'#42544b'});
+    lineWidth:.35,spacing:.8,color:'#42544b',occlusionCellSize:2});
 }catch(error){
   $('error').hidden=false;$('error').textContent='WebGL2 is required: '+error.message;
   throw error;
 }
-let schedule,frame=false,stats={};
+let schedule,frame=false,stats={},seed=2611,scene=[];
 const num=id=>Number($(id).value);
-const format=(v,id)=>id==='angleJitter'?v.toFixed(1)+'°':id==='width'||id==='spacing'||id==='placementJitter'||id==='height'?v.toFixed(2):id==='lengthJitter'?v+'%':String(v);
-for(const id of ['grid','grass','height','spacing','width','angleJitter','placementJitter','lengthJitter']){
+const format=(v,id)=>id==='angleJitter'?v.toFixed(1)+'°':id==='width'||id==='spacing'||id==='placementJitter'?v.toFixed(2):id==='lengthJitter'?v+'%':String(v);
+const hatchControls=['spacing','width','angleJitter','placementJitter','lengthJitter'];
+function updateHatches(){
+  // Change hatch density without regenerating the original scene geometry.
+  const spacing=num('spacing');
+  for(const object of scene)if(object.hatch)
+    object.hatch.spacing=spacing*(object.hatch.spacingScale??1);
+  renderer.setStyle(style());
+  setStats();renderLater();
+}
+for(const id of hatchControls){
   const el=$(id),out=$(id+'Out');
   const update=()=>{out.textContent=format(num(id),id);};
   update();
   el.addEventListener('input',()=>{
-    update();
-    clearTimeout(schedule);
-    if(id==='width'||id==='angleJitter'||id==='placementJitter'||id==='lengthJitter'){
-      schedule=setTimeout(()=>{renderer.setStyle(style());renderLater();setStats();},110);
-    }else schedule=setTimeout(()=>rebuild(),110);
+    update();clearTimeout(schedule);
+    schedule=setTimeout(()=>attempt(updateHatches),160);
   });
   el.addEventListener('change',()=>{
-    clearTimeout(schedule);
-    if(id==='width'||id==='angleJitter'||id==='placementJitter'||id==='lengthJitter'){
-      renderer.setStyle(style());renderLater();setStats();
-    }else rebuild();
+    clearTimeout(schedule);attempt(updateHatches);
   });
 }
 function style(){
@@ -44,29 +47,24 @@ function renderLater(){
     frame=false;renderer.render();$('zoom').textContent=Math.round(renderer.camera.zoom*100)+'%';
   });
 }
-// Original Never the Same uses a ~75-unit scene, much smaller than the
-// Hatch Render test meadow. The shared fit() intentionally caps zoom at 3x,
-// which makes these authentic plants tiny on desktop. Fit this page's
-// coordinate scale directly without changing other demos' zoom behavior.
+// The 2025 artwork uses a fixed 75×75 orthographic canvas, independent
+// of outlier plants' bounding boxes. Fit that square rather than shrinking
+// the field to contain every projected leaf or stem.
 function fitOriginal(padding=38){
-  const bounds=renderer.bounds;
   const w=Math.max(1,canvas.clientWidth-2*padding);
   const h=Math.max(1,canvas.clientHeight-2*padding);
-  renderer.camera.x=(bounds.minX+bounds.maxX)*.5;
-  renderer.camera.y=(bounds.minY+bounds.maxY)*.5;
-  renderer.camera.zoom=Math.max(.05,Math.min(30,
-    w/Math.max(1,bounds.maxX-bounds.minX),
-    h/Math.max(1,bounds.maxY-bounds.minY)));
+  renderer.camera.x=0;
+  renderer.camera.y=0;
+  renderer.camera.zoom=Math.max(.05,Math.min(30,Math.min(w,h)/75));
 }
 function rebuild({fit=false}={}){
-  $('stats').textContent='Generating and clipping original geometry…';
-  const seed=num('seed')>>>0;
-  const geometry=generateNeverSame({seed,grid:num('grid'),grassPerPlant:num('grass'),
-    plantScale:num('height'),palette:num('palette'),spacing:num('spacing')});
-  stats=geometry.stats;
+  $('error').hidden=true;
+  $('stats').textContent='Constructing the original 3,600-position meadow…';
+  const geometry=generateNeverSame({seed,spacing:num('spacing')});
+  stats=geometry.stats;scene=geometry.scene;
   renderer.background=hexColor(geometry.background);
   renderer.setStyle(style());
-  renderer.setScene(geometry.scene);
+  renderer.setScene(scene);
   if(renderer.occlusion&&renderer.stats.algorithm!=='boolean/full-width')
     throw new Error('CPU boolean clipping is required');
   if(fit)fitOriginal(38);
@@ -75,15 +73,15 @@ function rebuild({fit=false}={}){
 function attempt(fn){
   try{fn()}catch(e){console.error(e);$('error').hidden=false;$('error').textContent=e.message;throw e;}
 }
-$('seed').addEventListener('change',()=>attempt(()=>rebuild({fit:true})));
-$('palette').addEventListener('change',()=>attempt(()=>rebuild()));
 $('occlusion').addEventListener('change',e=>attempt(()=>{
   renderer.setOcclusion(e.target.checked);setStats();renderLater();
 }));
 $('outlines').addEventListener('change',e=>{renderer.showOutlines=e.target.checked;renderLater();});
-$('generate').addEventListener('click',()=>attempt(()=>{
-  $('seed').value=(num('seed')+7919)>>>0;rebuild({fit:true});
-}));
+$('generate').addEventListener('click',()=>{
+  seed=(seed+7919)>>>0;
+  $('stats').textContent='Regenerating original meadow…';
+  requestAnimationFrame(()=>attempt(()=>rebuild({fit:true})));
+});
 $('fit').addEventListener('click',()=>{fitOriginal(38);renderLater();});
 const pointers=new Map();
 canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});});

@@ -246,7 +246,7 @@ export class HatchRenderer {
     const started=performance.now(),n=this.polygons.length;
     const data=new StrokeBuffer(n*(this.occlusion&&this.coverageDensity>=2?2:9));
     const outlines=new StrokeBuffer(n*4);
-    const occluders=this.occlusion?new OccluderIndex(this.bounds,n):null;
+    const occluders=this.occlusion?new OccluderIndex(this.bounds,n,this.style.occlusionCellSize??null):null;
     const outlineInk=[0.16,0.19,0.2],outlineWidth=1;
     const safety=0.5; // Subpixel AA allowance in world units around a thick stroke.
     let rawStrokes=0,skippedPolygons=0,clipMs=0,hatchMs=0,outlineSegments=0;

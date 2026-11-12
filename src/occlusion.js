@@ -21,9 +21,14 @@ export function overlappingBounds(a,b) {
  * Only neighboring occluders are examined when hatching a farther polygon.
  */
 export class OccluderIndex {
-  constructor(bounds, estimatedCount=1) {
+  constructor(bounds, estimatedCount=1, customCellSize=null) {
     const area=Math.max(1,(bounds.maxX-bounds.minX)*(bounds.maxY-bounds.minY));
-    this.cellSize=Math.max(12,Math.sqrt(area/Math.max(1,estimatedCount))*1.8);
+    if(customCellSize!==null&&(!Number.isFinite(customCellSize)||customCellSize<=0))
+      throw new RangeError('Invalid occlusion cell size');
+    // Dense botanical drawings are made of sub-unit polygons, so a 12-unit
+    // bin contains thousands of unrelated occluders. The optional narrower
+    // bin changes only search efficiency, never boolean visibility.
+    this.cellSize=customCellSize??Math.max(12,Math.sqrt(area/Math.max(1,estimatedCount))*1.8);
     this.originX=bounds.minX;this.originY=bounds.minY;
     this.cells=new Map();this.large=[];this.items=[];
   }

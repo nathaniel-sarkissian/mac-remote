@@ -1,22 +1,13 @@
-# Never the Same — original geometry × Hatch Render
+# Never the Same — original scene construction × Hatch Render
 
-Static browser demo of Nat Sarkissian's original **Never the Same** flower and grass geometry
-from the Ethereum Fxhash/Verse edition, rendered with Hatch Render's modern WebGL
-square-capped hatch renderer and CPU full-width boolean occlusion.
+**Static browser edition**, using Nat Sarkissian's original artwork's 60×60 planting lattice (3,600 plant positions), original 100×175 terrain-height and light grids, Gaussian jitter, growth and flower species distribution, segmented stems, curved leaves and petals, disks, and grass triangles.
 
-The original geometry has seven flower species, layered curved petals, flower head disks,
-leaves and jointed stems, and triangular blades of grass. No wind/growth animation, original
-raster hatching or shader treatments are used.
+The old raster hatching/shader/animation pipeline is replaced by the shared WebGL Hatch Render engine with full-width CPU polygon boolean occlusion and square stroke caps. The interface exposes hatch-only controls, plus scene regeneration.
 
-Original code: `nathaniel-sarkissian/hatch-render`, commit
-`bd195d9431b1999f752042d46e0af3f0e1ab867b`, on the `/nts/` Vite page.
-Original minted-source snapshot: Ethereum contract
-`0x34D827cFFECD117C61BcdCE797f3Cd3993d0C409`,
-IPFS `QmcEFyzV5UHgdyVPTbaSVFd5jgCKq3SQM79HqMzAUUYWM5`.
+Canonical Hatch Render source: https://github.com/nathaniel-sarkissian/hatch-render/commit/d23648dc300cb5daca620719d3724a5074647364
 
-The static release avoids the Vite/npm runtime by importing the same JS modules
-directly, with the one build dependency Earcut v3.0.2 vendored as an ES module.
-The ISC license for Earcut is in `vendor/LICENSE-earcut.txt`.
+Original minted artwork: https://verse.works/series/never-the-same-by-nat-sarkissian
 
-This branch is entirely separate from mac-remote's main branch and doesn't affect
-the Mac remote control application.
+The archived 2025 source is preserved in Hatch Render's `research-nts-ipfs` branch.
+
+This static release uses vendored Mapbox Earcut v3.0.2 (ISC license in `vendor/LICENSE-earcut.txt`), and lives on an isolated public branch to avoid modifying mac-remote main.

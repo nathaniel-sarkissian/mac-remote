@@ -41,18 +41,42 @@ function randomGaussian(mu=0,sigma=1){
 }
 let sNoise,shapes=[],booleanShapes=[];
 let leafPalette,grassPalette,bgColor,paletteIndex=0;
+const MAP_WIDTH=100,MAP_HEIGHT=175;
+let terrainHt=[],terrainLighting=[];
 let time_short=0,time_long=0.17,timeVaryingWiggleMagnitude=0.48,windDirection=PI/2,flowerTypeNoiseScaleModifier=1;
 let curveDetailMultiplier=1,targetSzX=75,targetSzY=75;
 function noise(x,y=0,z=0){return norm(sNoise.noise3D(x,y,z),-1,1);}
+// Same discrete 100×175 height and light maps as prepHeightmap() in the
+// archived artwork. Computing both once also avoids noise calls per plant.
+function prepareTerrain() {
+  terrainHt=Array.from({length:MAP_WIDTH},()=>new Float64Array(MAP_HEIGHT));
+  terrainLighting=Array.from({length:MAP_WIDTH-1},()=>new Float64Array(MAP_HEIGHT-1));
+  const lightAngle=PI/5;
+  const light=_normalize(_createV(cos(lightAngle),-.8,sin(lightAngle)));
+  for(let i=0;i<MAP_WIDTH;i++)for(let j=0;j<MAP_HEIGHT;j++){
+    terrainHt[i][j]=pow(j/MAP_HEIGHT,1)*fractalNoise({
+      x:i*.024,y:0,z:j*.024,nOctaves:3,
+      scaleFallout:1.5,weightFallout:.85
+    });
+  }
+  for(let i=0;i<MAP_WIDTH-1;i++)for(let j=0;j<MAP_HEIGHT-1;j++){
+    const normal=_normalize(_createV(
+      terrainHt[i+1][j]-terrainHt[i][j],0,
+      terrainHt[i][j+1]-terrainHt[i][j]));
+    terrainLighting[i][j]=map(-_dot(normal,light),-1,1,0,1);
+  }
+}
 function heightMap(x,z){
-  // The original sampled a 100x175 noise height-field and multiplied by 100.
-  const i=constrain(floor(map(x,-targetSzX/2,targetSzX/2,0,100)),0,99);
-  const j=constrain(floor(map(z,-targetSzY*.6-10,targetSzY*.6-10,0,175)),0,174);
-  return 100*(j/175)*fractalNoise({x:i*.024,y:0,z:j*.024,nOctaves:3,scaleFallout:1.5,weightFallout:0.85});
+  const i=constrain(floor(map(x,-targetSzX/2,targetSzX/2,0,MAP_WIDTH)),0,MAP_WIDTH-1);
+  const j=constrain(floor(map(z,-targetSzY*.6-10,targetSzY*.6-10,0,MAP_HEIGHT)),0,MAP_HEIGHT-1);
+  return terrainHt[i][j]*100;
 }
 function terrainLight(x,z){
-  const a=heightMap(x,z),dx=heightMap(x+1,z)-a,dz=heightMap(x,z+1)-a;
-  return constrain(0.65+0.1*(dx-dz),0,1);
+  // Original lightMap lookup uses distinct sampling bounds from heightMap.
+  const i=floor(map(x,-targetSzX/1.4,targetSzX/1.4,0,MAP_WIDTH));
+  const j=floor(map(z,-targetSzY*.48-25,1.15*targetSzY*.5-25,0,MAP_HEIGHT));
+  return i>=0&&i<MAP_WIDTH-1&&j>=0&&j<MAP_HEIGHT-1
+    ?terrainLighting[i][j]:1;
 }
 class _Shape {
   constructor(closed){this.closed=closed;this.points=[];}
@@ -1326,7 +1350,7 @@ function visiblePolygon(shape){
   const factor=shape.type==='leaf'?.35:shape.type==='petal'?.8:1;
   return {type:'polygon',points,outline:shape.type!=='leaf',
     hatch:{angle:angleDegrees(angle),spacing:factor*geometrySpacing,
-      color:shape.fill??'#7d917c',lineWidth:-1},
+      color:shape.fill??'#7d917c',lineWidth:-1,spacingScale:factor},
     plantPart:shape.type??'polygon'};
 }
 let geometrySpacing=.7;
@@ -1336,11 +1360,11 @@ let geometrySpacing=.7;
  * Returns front-to-back HatchRenderer scene objects. The old raster buffer,
  * old hatch and old shadow/crayon shaders are never instantiated.
  */
-export function generateNeverSame({seed=2611,grid=10,grassPerPlant=2,palette=0,
+export function generateNeverSame({seed=2611,grid=60,grassPerPlant=2,palette=null,
   spacing=.7,plantScale=1,sceneSize=75}={}){
-  if(!Number.isFinite(seed)||!Number.isInteger(grid)||grid<2||grid>32||
+  if(!Number.isFinite(seed)||!Number.isInteger(grid)||grid<2||grid>60||
      !Number.isInteger(grassPerPlant)||grassPerPlant<0||grassPerPlant>4||
-     !Number.isInteger(palette)||palette<0||palette>3||
+     (palette!==null&&(!Number.isInteger(palette)||palette<0||palette>3))||
      !(spacing>0)||!Number.isFinite(spacing)||
      !(plantScale>0)||!Number.isFinite(plantScale)||
      !(sceneSize>10)||!Number.isFinite(sceneSize))
@@ -1352,7 +1376,10 @@ export function generateNeverSame({seed=2611,grid=10,grassPerPlant=2,palette=0,
   time_short=0;time_long=.17;timeVaryingWiggleMagnitude=.48;
   windDirection=PI/2;flowerTypeNoiseScaleModifier=random(.8,1.5);
   geometrySpacing=spacing;curveDetailMultiplier=1;
-  setPalette(palette);
+  prepareTerrain();
+  // The original scene chooses a palette once per image rather than letting
+  // each plant pick its own. A caller may still force a palette for tests.
+  setPalette(palette===null?random([0,1,2,3]):palette);
   prepareFlowerTypes();
   shuffle(flowerTypes);
   const flowerThreshold=random(-.075,.1)-.2;
@@ -1408,13 +1435,14 @@ export function generateNeverSame({seed=2611,grid=10,grassPerPlant=2,palette=0,
     entries.push({depth:grass.zIndex,item:{
       type:'polygon',grass:true,outline:false,points,
       hatch:{angle:angleDegrees(grass.hashAngle),spacing:spacing*.55,
-        lineWidth:-1,color:grass.fill??'#82947e'}
+        lineWidth:-1,color:grass.fill??'#82947e',spacingScale:.55}
     }});
   }
   // Original occlusion order visits ascending zIndex first (nearer).
   entries.sort((a,b)=>a.depth-b.depth);
   return {scene:entries.map(x=>x.item),background:bgColor,
-    stats:{plants:generatedPlants,grass:generatedGrass,
+    stats:{plants:generatedPlants,grass:generatedGrass,plantGrid:[nStepsX,nStepsZ],
+      palette:paletteIndex,
       petals:shapes.filter(p=>p.type==='petal').length,
       leaves:shapes.filter(p=>p.type==='leaf').length,
       disks:shapes.filter(p=>p.type==='disk').length,
