@@ -1054,11 +1054,11 @@ float stemSegmentLength(Plant p){
 vec3 stemAt(Plant p,float t){
   // Integrates the original incremental yaw/pitch curvature approximately,
   // with the same number of 5-unit age-scaled stem segments.
-  float length=stemSegmentLength(p)*p.count*t;
+  float stemDistance=stemSegmentLength(p)*p.count*t;
   float angle=p.pitch*t*.78;
-  return p.root+vec3(-sin(p.yaw)*sin(angle)*length,
-                      -cos(angle)*length,
-                      cos(p.yaw)*sin(angle)*length);
+  return p.root+vec3(-sin(p.yaw)*sin(angle)*stemDistance,
+                      -cos(angle)*stemDistance,
+                      cos(p.yaw)*sin(angle)*stemDistance);
 }
 vec3 stemTangent(Plant p,float t){
   float lo=max(0.0,t-.005),hi=min(1.0,t+.005);
@@ -1071,14 +1071,14 @@ vec3 localLeaf(Plant p,int leaf,int index){
   float within=noise2(vec2(float(k)*100.0,0.0));
   float attach=(float(segment)+within)/max(p.count,1.0);
   float scale=mix(.75,.5,step)*clamp(p.age-step*.5,0.0,1.0);
-  float length=mix(leafLengthMin(p.species),leafLengthMax(p.species),p.leafL);
+  float leafSpan=mix(leafLengthMin(p.species),leafLengthMax(p.species),p.leafL);
   float h=mix(leafHeightMin(p.species),leafHeightMax(p.species),p.leafL);
   float ang=TAU*float(index%13)/13.0;
   float along=(cos(ang)+1.0)*.5;
   // Exactly thirteen samples on the archive's elongated curved leaf outline.
   vec3 shape=vec3(sin(ang),cos(ang)+1.0,
                 -sqrt(max(0.0,1.0-pow(1.0-along,2.0))));
-  shape*=vec3(leafWidth(p.species),length,h)*scale;
+  shape*=vec3(leafWidth(p.species),leafSpan,h)*scale;
   shape=rotateOriginal(shape,p.age*PI/2.0+PI/4.0,0.0,PI/2.0);
   shape=rotateOriginal(shape,0.0,PI/2.0,0.0);
   float twist=(noise2(p.root.xz*.045+vec2(float(segment),float(k)*10.0))*2.0-1.0)*TAU;

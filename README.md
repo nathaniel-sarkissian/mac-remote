@@ -33,3 +33,5 @@ The GPU geometry prototype supports mouse and touch orbit controls: left drag / 
 The GPU geometry study now follows the recovered original's 60 × 60 field, its six species' exact sizes, layer and petal counts, source leaf/petal formulas, paired grass positions, steep 100 × 175 terrain elevation and source-style 45° projection. A 60×60 GPU-only RGBA8 prepass computes per-site growth, age, terrain and clustered flower types, and five instanced draw calls generate the 3D forms. A tiny image-wide deterministic seed setup selects the exact original palette, background, and shuffled species order. The original OpenSimplex field and incremental stem integration are approximated in shaders; this is a source-based geometry reconstruction, not pixel-identical minted-token playback. Hatching remains the next milestone and is unchanged in `index.html`.
 
 Canonical source: https://github.com/nathaniel-sarkissian/hatch-render/commit/4c137eb28f17f637bff6c693cebb47cf8933eb6a
+
+GLSL shader compile correction: https://github.com/nathaniel-sarkissian/hatch-render/commit/4d629dcf2842b481a53a5ede8891256cc7cee2cb
