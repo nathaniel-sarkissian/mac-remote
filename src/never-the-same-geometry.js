@@ -1336,6 +1336,22 @@ function grassShape(args) {
 
 const toXY=p=>{const q=_3dTo2d(p);return [q.x,q.y];};
 const angleDegrees=rad=>((rad*180/PI)%180+180)%180;
+// The 2025 hatcher used ceil(max projected bbox extent), then
+// ceil(hashSz*2*nHashesMult) hatches across a 2*hashSz/1.7 strip.
+const ORIGINAL_HATCH_SPACING=.6;
+function originalHatch(points,angle,{density=1,wobble=.3,weight=.25}={}){
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(const [x,y] of points){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}
+  const hashSz=Math.max(1,Math.ceil(Math.max(maxX-minX,maxY-minY)));
+  const nHashes=Math.ceil(hashSz*2*density);
+  const spacingScale=(2*hashSz/1.7/nHashes)/ORIGINAL_HATCH_SPACING;
+  const a=angle*PI/180;
+  const phase=-(minX+maxX)/2*Math.sin(a)+(minY+maxY)/2*Math.cos(a)-hashSz/1.7;
+  const lineWidthScale=weight/.25;
+  return {angle,phase,spacing:geometrySpacing*spacingScale,spacingScale,
+    nHashesMult:density,endpointWobble:wobble,endExtension:.1,
+    lineWidth:geometryWidth*lineWidthScale,lineWidthScale};
+}
 function visiblePolygon(shape){
   const points=shape.map(toXY);
   if(points.length<3||points.some(p=>!p.every(Number.isFinite)))return null;
@@ -1347,13 +1363,14 @@ function visiblePolygon(shape){
   const center=[(minX+maxX)*.5,(minY+maxY)*.5];
   const angle=atan2(center[1]-first[1],center[0]-first[0])+
     (shape.type==='leaf'?0:shape.type==='petal'?PI/2:PI/4);
-  const factor=shape.type==='leaf'?.35:shape.type==='petal'?.8:1;
+  const density=shape.type==='leaf'?4:shape.type==='petal'?1.2:1;
+  const wobble=shape.type==='petal'?.35:.3;
   return {type:'polygon',points,outline:shape.type!=='leaf',
-    hatch:{angle:angleDegrees(angle),spacing:factor*geometrySpacing,
-      color:shape.fill??'#7d917c',lineWidth:-1,spacingScale:factor},
+    hatch:{...originalHatch(points,angleDegrees(angle),{density,wobble}),
+      color:shape.fill??'#7d917c'},
     plantPart:shape.type??'polygon'};
 }
-let geometrySpacing=.7;
+let geometrySpacing=.6,geometryWidth=.25;
 
 /**
  * Original specimen geometry with a deliberately static time state.
@@ -1361,11 +1378,12 @@ let geometrySpacing=.7;
  * old hatch and old shadow/crayon shaders are never instantiated.
  */
 export function generateNeverSame({seed=2611,grid=60,grassPerPlant=2,palette=null,
-  spacing=.7,plantScale=1,sceneSize=75}={}){
+  spacing=.6,width=.25,plantScale=1,sceneSize=75}={}){
   if(!Number.isFinite(seed)||!Number.isInteger(grid)||grid<2||grid>60||
      !Number.isInteger(grassPerPlant)||grassPerPlant<0||grassPerPlant>4||
      (palette!==null&&(!Number.isInteger(palette)||palette<0||palette>3))||
      !(spacing>0)||!Number.isFinite(spacing)||
+     !(width>0)||!Number.isFinite(width)||
      !(plantScale>0)||!Number.isFinite(plantScale)||
      !(sceneSize>10)||!Number.isFinite(sceneSize))
     throw new RangeError('Invalid Never the Same scene options');
@@ -1375,7 +1393,7 @@ export function generateNeverSame({seed=2611,grid=60,grassPerPlant=2,palette=nul
   targetSzX=sceneSize;targetSzY=sceneSize;
   time_short=0;time_long=.17;timeVaryingWiggleMagnitude=.48;
   windDirection=PI/2;flowerTypeNoiseScaleModifier=random(.8,1.5);
-  geometrySpacing=spacing;curveDetailMultiplier=1;
+  geometrySpacing=spacing;geometryWidth=width;curveDetailMultiplier=1;
   prepareTerrain();
   // The original scene chooses a palette once per image rather than letting
   // each plant pick its own. A caller may still force a palette for tests.
@@ -1434,8 +1452,9 @@ export function generateNeverSame({seed=2611,grid=60,grassPerPlant=2,palette=nul
     if(points.length!==3||!points.flat().every(Number.isFinite))continue;
     entries.push({depth:grass.zIndex,item:{
       type:'polygon',grass:true,outline:false,points,
-      hatch:{angle:angleDegrees(grass.hashAngle),spacing:spacing*.55,
-        lineWidth:-1,color:grass.fill??'#82947e',spacingScale:.55}
+      hatch:{...originalHatch(points,angleDegrees(grass.hashAngle),
+        {density:grass.nHashesMult,wobble:grass.wobbleAmt,weight:grass.hashWeight}),
+        color:grass.fill??'#82947e'}
     }});
   }
   // Original occlusion order visits ascending zIndex first (nearer).

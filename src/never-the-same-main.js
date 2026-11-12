@@ -6,7 +6,7 @@ const canvas=$('canvas');
 let renderer;
 try {
   renderer=new HatchRenderer(canvas,{background:'#e9e8d7',occlusion:true,
-    lineWidth:.35,spacing:.8,color:'#42544b',occlusionCellSize:2});
+    lineWidth:.25,spacing:.6,color:'#42544b',occlusionCellSize:2});
 }catch(error){
   $('error').hidden=false;$('error').textContent='WebGL2 is required: '+error.message;
   throw error;
@@ -17,9 +17,11 @@ const format=(v,id)=>id==='angleJitter'?v.toFixed(1)+'°':id==='width'||id==='sp
 const hatchControls=['spacing','width','angleJitter','placementJitter','lengthJitter'];
 function updateHatches(){
   // Change hatch density without regenerating the original scene geometry.
-  const spacing=num('spacing');
-  for(const object of scene)if(object.hatch)
+  const spacing=num('spacing'),width=num('width');
+  for(const object of scene)if(object.hatch){
     object.hatch.spacing=spacing*(object.hatch.spacingScale??1);
+    object.hatch.lineWidth=width*(object.hatch.lineWidthScale??1);
+  }
   renderer.setStyle(style());
   setStats();renderLater();
 }
@@ -60,7 +62,7 @@ function fitOriginal(padding=38){
 function rebuild({fit=false}={}){
   $('error').hidden=true;
   $('stats').textContent='Constructing the original 3,600-position meadow…';
-  const geometry=generateNeverSame({seed,spacing:num('spacing')});
+  const geometry=generateNeverSame({seed,spacing:num('spacing'),width:num('width')});
   stats=geometry.stats;scene=geometry.scene;
   renderer.background=hexColor(geometry.background);
   renderer.setStyle(style());

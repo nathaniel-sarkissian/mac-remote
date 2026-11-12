@@ -215,9 +215,11 @@ export class HatchRenderer {
         const aj=Math.abs(hatch.angleJitter??this.style.angleJitter??0);
         const pj=Math.abs(hatch.placementJitter??this.style.placementJitter??0);
         const lj=Math.abs(hatch.lengthJitter??this.style.lengthJitter??0);
+        const endpointWobble=Math.abs(hatch.endpointWobble??0);
+        const endExtension=Math.abs(hatch.endExtension??0);
         const diameter=Math.hypot(box.maxX-box.minX,box.maxY-box.minY);
         const reach=pj+diameter*Math.sin(Math.min(180,aj)*Math.PI/360)
-          +diameter*lj/200;
+          +diameter*lj/200+endpointWobble+endExtension;
         const testBounds=reach>0
           ?{minX:box.minX-reach,minY:box.minY-reach,maxX:box.maxX+reach,maxY:box.maxY+reach}:box;
         if(coverage.covers(testBounds)){hidden[i]=1;skipped++;continue;}
@@ -289,19 +291,20 @@ export class HatchRenderer {
       const angleJitter=Math.abs(hatch.angleJitter??this.style.angleJitter??0);
       const placementJitter=Math.abs(hatch.placementJitter??this.style.placementJitter??0);
       const lengthJitter=Math.abs(hatch.lengthJitter??this.style.lengthJitter??0);
+      const endpointWobble=hatch.endpointWobble??0,endExtension=hatch.endExtension??0;
       const connectZigzag=Boolean(hatch.connectZigzag??this.style.connectZigzag);
       const seed=hatch.seed??item.seed??i;
       const width=hatch.lineWidth??-1;
-      if(![angleJitter,placementJitter,lengthJitter].every(Number.isFinite))throw new Error('Invalid hatch jitter');
+      if(![angleJitter,placementJitter,lengthJitter,endpointWobble,endExtension].every(Number.isFinite)||endpointWobble<0||endExtension<0)throw new Error('Invalid hatch jitter');
       if(!Number.isFinite(width)||(width!==-1&&width<0))throw new Error('Invalid line width');
       const color=hatch.color?hexColor(hatch.color):[0,0,0];
       const alpha=hatch.color?(hatch.opacity??1):-1;
       if(!Number.isFinite(alpha)||alpha>1||alpha< -1)throw new Error('Invalid hatch opacity');
       const halfWidth=Math.max(0,width<0?this.style.lineWidth:width)*0.5+safety;
       const begin=performance.now();
-      const hasJitter=angleJitter>0||placementJitter>0||lengthJitter>0;
+      const hasJitter=angleJitter>0||placementJitter>0||lengthJitter>0||endpointWobble>0||endExtension>0;
       const source=hasJitter
-        ?generateJitteredHatchStrokes(item,{angle,spacing,phase,angleJitter,placementJitter,lengthJitter,seed})
+        ?generateJitteredHatchStrokes(item,{angle,spacing,phase,angleJitter,placementJitter,lengthJitter,endpointWobble,endExtension,seed})
         :generateHatchStrokes(item,{angle,spacing,phase});
       const strokes=connectZigzag?connectZigZagStrokes(source):source;
       rawStrokes+=strokes.length;

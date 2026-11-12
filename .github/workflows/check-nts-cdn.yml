@@ -2,7 +2,6 @@ name: Verify public Never the Same release CDN
 on:
   push:
     branches: [never-the-same-hatch-demo]
-    paths: ['.github/workflows/check-nts-cdn.yml']
 permissions:
   contents: read
 jobs:
@@ -13,7 +12,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/43de40a08dcb24414795f42f7377693579511e56
+          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/${GITHUB_SHA}
           for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js; do
             header=$(mktemp)
             body=$(mktemp)
@@ -36,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/43de40a08dcb24414795f42f7377693579511e56
+          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/${GITHUB_SHA}
           mkdir -p /tmp/nts-local/src
           for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js; do
             curl -fLSs --retry 2 --connect-timeout 15 --max-time 60 "$base/$file" -o "/tmp/nts-local/$file"

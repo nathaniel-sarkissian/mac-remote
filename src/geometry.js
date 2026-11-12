@@ -126,7 +126,7 @@ export function generateHatchStrokes(polygon, { angle = 45, spacing = 7, phase =
  * @returns {Array<[[number,number],[number,number]]>}
  */
 export function generateHatchSegments(polygon, options={}) {
-  const strokes=(options.angleJitter||options.placementJitter||options.lengthJitter)
+  const strokes=(options.angleJitter||options.placementJitter||options.lengthJitter||options.endpointWobble||options.endExtension)
     ?generateJitteredHatchStrokes(polygon, options)
     :generateHatchStrokes(polygon, options);
   const finalStrokes=options.connectZigzag?connectZigZagStrokes(strokes):strokes;
@@ -261,10 +261,12 @@ export function generateJitteredHatchStrokes(polygon, {
   angleJitter = 0,
   placementJitter = 0,
   lengthJitter = 0, // maximum +/- percentage of the originally clipped length
+  endpointWobble = 0, // independent, perpendicular noise on both clipped endpoints
+  endExtension = 0, // amount to extend each clipped end in world units
   seed = 0
 } = {}) {
   if (!(Number.isFinite(spacing) && spacing > 0)) throw new Error('spacing must be positive');
-  if (![angle, phase, angleJitter, placementJitter, lengthJitter].every(Number.isFinite)) {
+  if (![angle, phase, angleJitter, placementJitter, lengthJitter, endpointWobble, endExtension].every(Number.isFinite) && endpointWobble>=0 && endExtension>=0) {
     throw new Error('angle, phase, and jitter values must be finite');
   }
   // This is also the no-jitter fast path, preserving the original exact caps.
@@ -272,7 +274,7 @@ export function generateJitteredHatchStrokes(polygon, {
   const rotation=Math.abs(angleJitter);
   const offset=Math.abs(placementJitter);
   const lengthAmount=Math.abs(lengthJitter)/100;
-  if(rotation===0&&offset===0&&lengthAmount===0)return baseStrokes;
+  if(rotation===0&&offset===0&&lengthAmount===0&&endpointWobble===0&&endExtension===0)return baseStrokes;
   const baseSeed=normalizeSeed(seed);
   const result=new Array(baseStrokes.length);
   for(let i=0;i<baseStrokes.length;i++){
@@ -290,7 +292,16 @@ export function generateJitteredHatchStrokes(polygon, {
     // Do not carry the old polygon-boundary cap insets: they were intended
     // to keep square ends INSIDE the source polygon. Only newly introduced
     // foreground occlusion cuts should receive boundary-aware cap insets.
-    result[i]=[[cx-rx+ox,cy-ry+oy],[cx+rx+ox,cy+ry+oy],0,0];
+    const ux=length>1e-12?rx/length:1,uy=length>1e-12?ry/length:0;
+    const nx=-uy,ny=ux;
+    const w1=endpointWobble?hashSigned(baseSeed,i,3)*endpointWobble:0;
+    const w2=endpointWobble?hashSigned(baseSeed,i,4)*endpointWobble:0;
+    // Original raster hatches independently wobbled both clipped endpoints,
+    // then extended each end by a fixed 0.1 world units.
+    result[i]=[
+      [cx-rx+ox-ux*endExtension+nx*w1,cy-ry+oy-uy*endExtension+ny*w1],
+      [cx+rx+ox+ux*endExtension+nx*w2,cy+ry+oy+uy*endExtension+ny*w2],0,0
+    ];
   }
   return result;
 }
