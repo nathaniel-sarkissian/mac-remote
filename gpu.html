@@ -12,6 +12,12 @@
 #resetView{border:1px solid #d8d8cf;background:#fafaf5e8;cursor:pointer;padding:10px 12px;font-size:11px;color:#394e3e}
 .camera-help{font-size:11px;color:#6a786b;line-height:1.55;margin:12px 0 5px}
 #cameraStatus{font-size:10px;color:#334a3f;letter-spacing:.07em;font-variant-numeric:tabular-nums}
+/* Explicitly render the scene in screenshot QA at mobile viewport sizes,
+   avoiding old false-positive tests that only captured the control panel. */
+.scene-focus #studio{display:block;height:100vh}
+.scene-focus .controls,.scene-focus .topbar,.scene-focus footer{display:none}
+.scene-focus .main{width:100%;height:100vh;min-height:0}
+.scene-focus .stage{width:100%;height:100%}
 .status{font-size:10px;color:#677b69;line-height:1.7;margin-top:17px}.status strong{color:#314d35}
 @media(max-width:800px){.metrics b{font-size:15px}}
 </style>

@@ -118,6 +118,9 @@ jobs:
             --screenshot=/tmp/nts-gpu-screenshot.png "$gpuurl" >/dev/null 2>/tmp/gpu-screenshot.err
           test -s /tmp/nts-gpu-screenshot.png
           file /tmp/nts-gpu-screenshot.png
+          # Reproduce the iPhone screenshot's actual AZ185 / EL30 / 77%
+          # camera angle, with the canvas occupying the entire viewport.
+          mobileurl="http://127.0.0.1:8765/gpu.html?smoke=1&focus=1&userView=1"
           # Verify flower visibility at phone viewport dimensions too. This
           # catches cases where the grass-only geometry draws but complex
           # plant vertex work fails to render on narrow screens.
@@ -125,7 +128,7 @@ jobs:
             --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
             --disable-gpu-sandbox --force-device-scale-factor=2 \
             --virtual-time-budget=9500 --window-size=430,844 \
-            --dump-dom "$gpuurl" > /tmp/gpu-mobile-dom.html 2>/tmp/gpu-mobile-chrome.err
+            --dump-dom "$mobileurl" > /tmp/gpu-mobile-dom.html 2>/tmp/gpu-mobile-chrome.err
           python3 - <<'PY'
           import html,re
           source=open('/tmp/gpu-mobile-dom.html').read()
@@ -137,15 +140,18 @@ jobs:
           m=re.fullmatch(r'(\d+) FULL / (\d+) NO-GRASS',f)
           print('Mobile Chrome GPU flower pixels:',f)
           print('Mobile shader geometry:',t)
-          if not status or '/ READY' not in status.group(1) or not m or min(int(m.group(1)),int(m.group(2)))<16 or '7 RING POINTS' not in t:
+          camera=re.search(r'<p id="cameraStatus">([^<]+)</p>',source)
+          angle=html.unescape(camera.group(1)) if camera else ''
+          print('Reproduced iPhone camera:',angle)
+          if not status or '/ READY' not in status.group(1) or not m or min(int(m.group(1)),int(m.group(2)))<16 or '13 RING POINTS' not in t or 'AZ 185' not in angle or 'EL 30' not in angle or 'ZOOM 77%' not in angle:
               print('Chrome stderr:',open('/tmp/gpu-mobile-chrome.err').read()[-2500:])
-              raise SystemExit('Phone-sized GPU meadow must visibly render flowers and optimized silhouettes')
+              raise SystemExit('iPhone-angle GPU meadow must visibly render flowers with full source silhouettes')
           PY
           timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
             --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
             --disable-gpu-sandbox --force-device-scale-factor=2 \
             --virtual-time-budget=9000 --window-size=430,844 \
-            --screenshot=/tmp/nts-gpu-mobile.png "$gpuurl" >/dev/null 2>/tmp/gpu-mobile-image.err
+            --screenshot=/tmp/nts-gpu-mobile.png "$mobileurl" >/dev/null 2>/tmp/gpu-mobile-image.err
           test -s /tmp/nts-gpu-mobile.png
           file /tmp/nts-gpu-mobile.png
       - uses: actions/upload-artifact@v4

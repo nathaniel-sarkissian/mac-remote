@@ -12,6 +12,15 @@ try{
 let seed=2611,last=0,frames=0,sampleStart=0,fps=0;
 const plant=$('plantDensity'),grass=$('grassDensity'),animate=$('animate');
 const canvas=$('canvas');
+// Dedicated QA view exposes the *rendered canvas*, rather than screenshotting
+// only the controls above it on a phone-sized browser viewport.
+const urlOptions=new URLSearchParams(window.location.search);
+if(urlOptions.has('focus'))document.documentElement.classList.add('scene-focus');
+if(urlOptions.has('userView')){
+  gpu.camera.yaw=185*Math.PI/180;
+  gpu.camera.pitch=30*Math.PI/180;
+  gpu.camera.zoom=.77;
+}
 function updateCameraStatus(){
   $('cameraStatus').textContent=
     'AZ '+Math.round(((gpu.camera.yaw*180/Math.PI)%360+360)%360)+'° · '+
@@ -67,7 +76,7 @@ function countWarmFlowerPixels(){
   }
   return flowers;
 }
-if(new URLSearchParams(window.location.search).has('smoke')){
+if(urlOptions.has('smoke')){
   // Draw the actual full scene, then a grass-free plant-only scene. A renderer
   // that displays only grass now fails deployment instead of reporting READY.
   gpu.render({seed,plants:100,grass:100});
@@ -77,10 +86,12 @@ if(new URLSearchParams(window.location.search).has('smoke')){
   $('bloomPixels').textContent=fullBlooms+' FULL / '+bareBlooms+' NO-GRASS';
   if(fullBlooms<16||bareBlooms<16)
     throw new Error('GPU plant visibility regression: '+$('bloomPixels').textContent);
-  gpu.camera.orbit(60,-35);
-  gpu.camera.pan(30,-15,canvas.clientWidth,canvas.clientHeight);
-  gpu.camera.zoomAt(1.25,canvas.clientWidth*.6,canvas.clientHeight*.4,
-    canvas.clientWidth,canvas.clientHeight);
+  if(!urlOptions.has('userView')){
+    gpu.camera.orbit(60,-35);
+    gpu.camera.pan(30,-15,canvas.clientWidth,canvas.clientHeight);
+    gpu.camera.zoomAt(1.25,canvas.clientWidth*.6,canvas.clientHeight*.4,
+      canvas.clientWidth,canvas.clientHeight);
+  }
   updateCameraStatus();
   const result=gpu.render({seed,plants:Number(plant.value),grass:Number(grass.value)});
   $('triangles').textContent=result.triangles.toLocaleString()+

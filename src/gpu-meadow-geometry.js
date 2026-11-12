@@ -1184,9 +1184,12 @@ void main(){
     int leaf=inst%12;
     int maxLeaves=p.flower?int(p.count):int(p.count)*2;
     if(leaf>=maxLeaves){gl_Position=vec4(3.0,3.0,1.0,1.0);return;}
-    // Triangle fan: anchor at 0, visit every perimeter point, close at 0.
-    int point=vertex==0?0:(vertex-1)%uRingPoints;
-    position=localLeaf(p,leaf,point);
+    // The center must be INSIDE the leaf. Previously the fan was anchored
+    // to perimeter tip #0, generating long triangular wedges that visually
+    // resembled grass. Blend tip with opposite perimeter edge for center.
+    position=vertex==0?
+      mix(localLeaf(p,leaf,0),localLeaf(p,leaf,uRingPoints/2),0.5):
+      localLeaf(p,leaf,(vertex-1)%uRingPoints);
     float light=mix(p.brightness*.45,1.0,float(leaf)/max(float(maxLeaves),1.0));
     vColor=leafInk(uPalette,clamp(sqrt(max(light,0.0))*(.5+.5*p.brightness),0.0,1.0));
   }else if(uPart==3){
@@ -1200,18 +1203,21 @@ void main(){
       cursor-=count;
     }
     if(!selected){gl_Position=vec4(3.0,3.0,1.0,1.0);return;}
-    int point=vertex==0?0:(vertex-1)%uRingPoints;
+    // Flower fan center is interior to the petal rather than the far tip.
+    // This keeps curved petals filled and identifiable at small resolutions.
     // Source condition thins older blossoms but retains juveniles.
     float no=rand1(float(id)*29.2+float(petal)*17.0+float(layer));
     if(no>= (p.age<.5?1.0:mix(1.0,.20,clamp((p.age-.5)/.5,0.0,1.0))))
       {gl_Position=vec4(3.0,3.0,1.0,1.0);return;}
-    position=localPetal(p,layer,petal,point);
+    position=vertex==0?
+      mix(localPetal(p,layer,petal,0),localPetal(p,layer,petal,uRingPoints/2),0.5):
+      localPetal(p,layer,petal,(vertex-1)%uRingPoints);
     vColor=petalInk(p.species,uPalette);
   }else{
     int layer=inst%3;
     if(float(layer)>=layerCount(p.species)){gl_Position=vec4(3.0,3.0,1.0,1.0);return;}
-    int point=vertex==0?0:(vertex-1)%uRingPoints;
-    position=localDisk(p,point);
+    // Disks use the actual geometric center, with all 13 rim points.
+    position=vertex==0?stemAt(p,1.0):localDisk(p,(vertex-1)%uRingPoints);
     vColor=diskInk(p.species,uPalette);
   }
   // The source uses Y-down coordinates and rotates YZ by 45 degrees

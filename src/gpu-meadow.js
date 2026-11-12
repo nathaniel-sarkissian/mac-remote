@@ -25,13 +25,14 @@ export const GPU_MEADOW_BATCHES=Object.freeze([
   {name:'disks',part:4,mode:'fan',vertices:GPU_MEADOW_SPEC.ringPoints+2,
     instances:GPU_MEADOW_SPEC.plants*GPU_MEADOW_SPEC.diskLayers}
 ]);
-// Smaller viewports can use seven outline vertices without changing the
-// planting lattice, sizes, colors or the six original species. Restore all
-// thirteen source samples when zooming in to inspect a specimen.
+// The original artwork uses thirteen samples per leaf and petal perimeter.
+// Reducing to seven on phones collapsed the curved flower geometry into
+// angular slivers. The instanced triangle-fan path already saves more than
+// half the original work without changing the actual silhouettes.
 export function ringPointsForViewport(width,height,zoom=1){
   if(![width,height,zoom].every(Number.isFinite)||width<=0||height<=0||zoom<=0)
     throw new RangeError('Invalid GPU meadow viewport');
-  return Math.min(width,height)<550&&zoom<2?7:GPU_MEADOW_SPEC.ringPoints;
+  return GPU_MEADOW_SPEC.ringPoints;
 }
 export const GPU_MEADOW_FRAGMENT=`#version 300 es
 precision highp float;
@@ -182,12 +183,18 @@ export class GpuMeadow {
     let triangles=0,vertices=0,instances=0;
     for(const batch of GPU_MEADOW_BATCHES){
       gl.uniform1i(this.uniforms.uPart,batch.part);
+      // Original grassShape explicitly sets occlude=false. Grass contributes
+      // color but must NEVER write scene depth or hide the flowers behind it.
+      // The previous GPU draw wrote grass to depth first; on dense mobile
+      // frames it buried the plant heads under a solid field of triangles.
+      gl.depthMask(batch.part!==0);
       const fan=batch.mode==='fan',count=fan?ring+2:batch.vertices;
       gl.drawArraysInstanced(fan?gl.TRIANGLE_FAN:gl.TRIANGLES,0,count,batch.instances);
       triangles+=(fan?ring:count/3)*batch.instances;
       vertices+=count*batch.instances;
       instances+=batch.instances;
     }
+    gl.depthMask(true);
     if(query){gl.endQuery(ext.TIME_ELAPSED_EXT);this.pendingQueries.push(query);}
     this.frames++;
     Object.assign(this.stats,{cpuMs:performance.now()-start,triangles,vertices,
