@@ -307,34 +307,64 @@ export class HatchRenderer {
       const halfWidth=Math.max(0,width<0?this.style.lineWidth:width)*0.5+safety;
       const begin=performance.now();
       const hasJitter=angleJitter>0||placementJitter>0||lengthJitter>0||endpointWobble>0||endExtension>0;
-      // The scanner and polygon clipping run ONCE, even for nine redraws.
-      // Only the endpoints change between passes, like the archived artwork.
       const base=generateHatchStrokes(item,{angle,spacing,phase});
-      const batches=[];
-      let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-      for(let pass=0;pass<repeatCount;pass++){
+      if(repeatCount>1){
+        // Archived artwork behavior: clip ONCE from the unwobbled lattice,
+        // then redraw its visible fragments with independent per-pass wobble.
+        // Wobbled passes intentionally do not requery or reclip occlusion.
+        const strokes=connectZigzag?connectZigZagStrokes(base):base;
+        rawStrokes+=strokes.length*repeatCount;
+        hatchMs+=performance.now()-begin;
+        let queryBox=this.polygonBoxes[i];
+        if(strokes.length){
+          let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+          for(const [a,b] of strokes){
+            minX=Math.min(minX,a[0],b[0]);minY=Math.min(minY,a[1],b[1]);
+            maxX=Math.max(maxX,a[0],b[0]);maxY=Math.max(maxY,a[1],b[1]);
+          }
+          queryBox={minX,minY,maxX,maxY};
+        }
+        const near=occluders?occluders.query(inflate(queryBox,halfWidth)):[];
+        const clipStart=performance.now();
+        const visible=[];
+        for(const st of strokes){
+          const fragments=near.length?clipStrokeAgainstOccluders(st,near,halfWidth):[st];
+          for(const fragment of fragments)visible.push(fragment);
+        }
+        clipMs+=performance.now()-clipStart;
+        const wobbleStart=performance.now();
+        for(let pass=0;pass<repeatCount;pass++){
+          const wobbled=hasJitter?jitterClippedHatchStrokes(visible,{
+            angleJitter,placementJitter,lengthJitter,endpointWobble,endExtension,seed,pass
+          }):visible;
+          for(const st of wobbled)packed(data,st,width,depth,color,alpha);
+        }
+        hatchMs+=performance.now()-wobbleStart;
+      }else{
+        // Single-pass demos retain post-jitter exact boolean clipping.
         const source=hasJitter?jitterClippedHatchStrokes(base,{
-          angleJitter,placementJitter,lengthJitter,endpointWobble,endExtension,seed,pass
+          angleJitter,placementJitter,lengthJitter,endpointWobble,endExtension,seed,pass:0
         }):base;
         const strokes=connectZigzag?connectZigZagStrokes(source):source;
-        batches.push(strokes);
         rawStrokes+=strokes.length;
-        for(const [a,b] of strokes){
-          minX=Math.min(minX,a[0],b[0]);minY=Math.min(minY,a[1],b[1]);
-          maxX=Math.max(maxX,a[0],b[0]);maxY=Math.max(maxY,a[1],b[1]);
+        hatchMs+=performance.now()-begin;
+        let queryBox=this.polygonBoxes[i];
+        if(strokes.length){
+          let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+          for(const [a,b] of strokes){
+            minX=Math.min(minX,a[0],b[0]);minY=Math.min(minY,a[1],b[1]);
+            maxX=Math.max(maxX,a[0],b[0]);maxY=Math.max(maxY,a[1],b[1]);
+          }
+          queryBox={minX,minY,maxX,maxY};
         }
+        const near=occluders?occluders.query(inflate(queryBox,halfWidth)):[];
+        const clipStart=performance.now();
+        for(const st of strokes){
+          const fragments=near.length?clipStrokeAgainstOccluders(st,near,halfWidth):[st];
+          for(const fragment of fragments)packed(data,fragment,width,depth,color,alpha);
+        }
+        clipMs+=performance.now()-clipStart;
       }
-      hatchMs+=performance.now()-begin;
-      // A single conservative occluder lookup covers every independently
-      // wobbled pass, even if strokes extend outside the source polygon.
-      const queryBox=Number.isFinite(minX)?{minX,minY,maxX,maxY}:this.polygonBoxes[i];
-      const near=occluders?occluders.query(inflate(queryBox,halfWidth)):[];
-      const clipStart=performance.now();
-      for(const strokes of batches)for(const st of strokes){
-        const fragments=near.length?clipStrokeAgainstOccluders(st,near,halfWidth):[st];
-        for(const fragment of fragments)packed(data,fragment,width,depth,color,alpha);
-      }
-      clipMs+=performance.now()-clipStart;
 
       // Outlines are also thick square-cap strokes. Apply the same CPU boolean
       // clipping against nearer shapes rather than GL.LINES / a depth mask.
