@@ -13,7 +13,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/bcba817fbeab9ab03a1c5b9c608723c0c416ff96
+          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/d2f5a227067a528741756e7f5e6272bc7a0787c0
           for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js; do
             header=$(mktemp)
             body=$(mktemp)
@@ -36,7 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/bcba817fbeab9ab03a1c5b9c608723c0c416ff96
+          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/d2f5a227067a528741756e7f5e6272bc7a0787c0
           mkdir -p /tmp/nts-local/src
           for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js; do
             curl -fLSs --retry 2 --connect-timeout 15 --max-time 60 "$base/$file" -o "/tmp/nts-local/$file"
