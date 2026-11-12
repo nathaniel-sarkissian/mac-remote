@@ -45,9 +45,11 @@ jobs:
           import html,re
           source=open('/tmp/meadow-dom.html').read()
           m=re.search(r'<span id="stats">([^<]+)</span>',source)
+          print('Document byte count:',len(source))
+          print('Document prefix:',source[:1200])
           print('Rendered stats:',html.unescape(m.group(1)) if m else '(not found)')
           if not m or 'PLANTS' not in m.group(1) or 'MARKS' not in m.group(1) or '100 PLANTS' not in m.group(1):
-              print('Browser stderr:',open('/tmp/meadow-chrome.err').read()[-1500:])
+              print('Browser stderr:',open('/tmp/meadow-chrome.err').read()[-1800:])
               raise SystemExit('The app failed to initialize under headless Chrome')
           if 'id="error" class="error" hidden' not in source:
               raise SystemExit('The app showed a runtime error')
