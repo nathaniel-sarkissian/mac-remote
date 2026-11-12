@@ -1,5 +1,5 @@
 import earcut from './earcut.js';
-import { getRings, isLineObject, getLineStrokes, lineStrokesBounds, generateHatchStrokes, generateJitteredHatchStrokes, connectZigZagStrokes, visitHatchStrokes } from './geometry.js';
+import { getRings, isLineObject, getLineStrokes, lineStrokesBounds, generateHatchStrokes, jitterClippedHatchStrokes, connectZigZagStrokes, visitHatchStrokes } from './geometry.js';
 import { OccluderIndex, clipStrokeAgainstOccluders, ringBounds } from './occlusion.js';
 import { ConservativeCoverage } from './coverage.js';
 
@@ -115,7 +115,8 @@ class StrokeBuffer {
  * Scene objects are ordered nearest first: polygon {points|rings},
  * {type:'line',start,end}, {type:'path',points,closed?}, or
  * {type:'segments',segments}. Lines/paths never generate hatches or fill depth.
- * Per-polygon hatch: {angle, spacing, lineWidth, color, opacity, phase}.
+ * Per-polygon hatch: {angle, spacing, lineWidth, color, opacity, phase, repeatCount}.
+ * repeatCount redraws the same source hatches with independently seeded wobble.
  * Plain strokes: {stroke:{color,lineWidth,opacity}} or fields at top level.
  */
 export class HatchRenderer {
@@ -300,29 +301,36 @@ export class HatchRenderer {
       const color=hatch.color?hexColor(hatch.color):[0,0,0];
       const alpha=hatch.color?(hatch.opacity??1):-1;
       if(!Number.isFinite(alpha)||alpha>1||alpha< -1)throw new Error('Invalid hatch opacity');
+      const repeatCount=hatch.repeatCount??1;
+      if(!Number.isInteger(repeatCount)||repeatCount<1||repeatCount>12)
+        throw new Error('Hatch repeatCount must be between 1 and 12');
       const halfWidth=Math.max(0,width<0?this.style.lineWidth:width)*0.5+safety;
       const begin=performance.now();
       const hasJitter=angleJitter>0||placementJitter>0||lengthJitter>0||endpointWobble>0||endExtension>0;
-      const source=hasJitter
-        ?generateJitteredHatchStrokes(item,{angle,spacing,phase,angleJitter,placementJitter,lengthJitter,endpointWobble,endExtension,seed})
-        :generateHatchStrokes(item,{angle,spacing,phase});
-      const strokes=connectZigzag?connectZigZagStrokes(source):source;
-      rawStrokes+=strokes.length;
-      hatchMs+=performance.now()-begin;
-      // Jittered and connected hatches can extend well beyond their polygon.
-      // Query the exact finished centerline bounds, inflated by stroke width.
-      let queryBox=this.polygonBoxes[i];
-      if(strokes.length){
-        let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+      // The scanner and polygon clipping run ONCE, even for nine redraws.
+      // Only the endpoints change between passes, like the archived artwork.
+      const base=generateHatchStrokes(item,{angle,spacing,phase});
+      const batches=[];
+      let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+      for(let pass=0;pass<repeatCount;pass++){
+        const source=hasJitter?jitterClippedHatchStrokes(base,{
+          angleJitter,placementJitter,lengthJitter,endpointWobble,endExtension,seed,pass
+        }):base;
+        const strokes=connectZigzag?connectZigZagStrokes(source):source;
+        batches.push(strokes);
+        rawStrokes+=strokes.length;
         for(const [a,b] of strokes){
           minX=Math.min(minX,a[0],b[0]);minY=Math.min(minY,a[1],b[1]);
           maxX=Math.max(maxX,a[0],b[0]);maxY=Math.max(maxY,a[1],b[1]);
         }
-        queryBox={minX,minY,maxX,maxY};
       }
+      hatchMs+=performance.now()-begin;
+      // A single conservative occluder lookup covers every independently
+      // wobbled pass, even if strokes extend outside the source polygon.
+      const queryBox=Number.isFinite(minX)?{minX,minY,maxX,maxY}:this.polygonBoxes[i];
       const near=occluders?occluders.query(inflate(queryBox,halfWidth)):[];
       const clipStart=performance.now();
-      for(const st of strokes){
+      for(const strokes of batches)for(const st of strokes){
         const fragments=near.length?clipStrokeAgainstOccluders(st,near,halfWidth):[st];
         for(const fragment of fragments)packed(data,fragment,width,depth,color,alpha);
       }

@@ -1339,7 +1339,7 @@ const angleDegrees=rad=>((rad*180/PI)%180+180)%180;
 // The 2025 hatcher used ceil(max projected bbox extent), then
 // ceil(hashSz*2*nHashesMult) hatches across a 2*hashSz/1.7 strip.
 const ORIGINAL_HATCH_SPACING=.6;
-function originalHatch(points,angle,{density=1,wobble=.3,weight=.25}={}){
+function originalHatch(points,angle,{density=1,wobble=.3,weight=.25,repeatCount=9,opacity=.5}={}){
   let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
   for(const [x,y] of points){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}
   const hashSz=Math.max(1,Math.ceil(Math.max(maxX-minX,maxY-minY)));
@@ -1350,7 +1350,7 @@ function originalHatch(points,angle,{density=1,wobble=.3,weight=.25}={}){
   const lineWidthScale=weight/.25;
   return {angle,phase,spacing:geometrySpacing*spacingScale,spacingScale,
     nHashesMult:density,endpointWobble:wobble,endExtension:.1,
-    lineWidth:geometryWidth*lineWidthScale,lineWidthScale};
+    repeatCount,opacity,lineWidth:geometryWidth*lineWidthScale,lineWidthScale};
 }
 function visiblePolygon(shape){
   const points=shape.map(toXY);
@@ -1512,7 +1512,8 @@ export function generateNeverSame({seed=2611,grid=60,grassPerPlant=2,palette=nul
       type:'polygon',grass:true,outline:false,points,
       densityRank:grassRanks[grass.grassIndex],
       hatch:{...originalHatch(points,angleDegrees(grass.hashAngle),
-        {density:grass.nHashesMult,wobble:grass.wobbleAmt,weight:grass.hashWeight}),
+        {density:grass.nHashesMult,wobble:grass.wobbleAmt,weight:grass.hashWeight,
+          repeatCount:4,opacity:.65}),
         color:grass.fill??'#82947e'}
     }});
   }

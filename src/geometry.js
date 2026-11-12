@@ -254,28 +254,32 @@ export function connectZigZagStrokes(strokes) {
  * Hashes are stable for a seed and stroke index. Hole/concave clipping happens
  * before jitter, so fragments on either side of holes can drift into the hole.
  */
-export function generateJitteredHatchStrokes(polygon, {
-  angle = 45,
-  spacing = 7,
-  phase = 0,
+/**
+ * Transform already-clipped hatch strokes with an independent jitter pass.
+ * Reusing one source hatch lattice is essential: redraws re-wobble the SAME
+ * strokes, instead of sampling additional hatch lines. pass=0 retains the
+ * historical deterministic jitter and all non-repeated renderer behavior.
+ */
+export function jitterClippedHatchStrokes(baseStrokes, {
   angleJitter = 0,
   placementJitter = 0,
   lengthJitter = 0, // maximum +/- percentage of the originally clipped length
   endpointWobble = 0, // independent, perpendicular noise on both clipped endpoints
   endExtension = 0, // amount to extend each clipped end in world units
-  seed = 0
+  seed = 0,
+  pass = 0
 } = {}) {
-  if (!(Number.isFinite(spacing) && spacing > 0)) throw new Error('spacing must be positive');
-  if (![angle, phase, angleJitter, placementJitter, lengthJitter, endpointWobble, endExtension].every(Number.isFinite) && endpointWobble>=0 && endExtension>=0) {
-    throw new Error('angle, phase, and jitter values must be finite');
-  }
-  // This is also the no-jitter fast path, preserving the original exact caps.
-  const baseStrokes=generateHatchStrokes(polygon,{angle,spacing,phase});
+  if(!Array.isArray(baseStrokes))throw new Error('Expected polygon-clipped hatches');
+  if(![angleJitter,placementJitter,lengthJitter,endpointWobble,endExtension].every(Number.isFinite)
+    ||endpointWobble<0||endExtension<0||!Number.isInteger(pass)||pass<0)
+    throw new Error('Jitter values must be finite and pass must be a nonnegative integer');
+  // The first pass preserves the earlier hatch jitter exactly. Subsequent
+  // passes salt the per-segment hash without moving the base hatch lattice.
   const rotation=Math.abs(angleJitter);
   const offset=Math.abs(placementJitter);
   const lengthAmount=Math.abs(lengthJitter)/100;
   if(rotation===0&&offset===0&&lengthAmount===0&&endpointWobble===0&&endExtension===0)return baseStrokes;
-  const baseSeed=normalizeSeed(seed);
+  const baseSeed=(normalizeSeed(seed)^Math.imul(pass,0x9E3779B9))>>>0;
   const result=new Array(baseStrokes.length);
   for(let i=0;i<baseStrokes.length;i++){
     const [start,end]=baseStrokes[i];
@@ -304,4 +308,14 @@ export function generateJitteredHatchStrokes(polygon, {
     ];
   }
   return result;
+}
+
+
+/** Generate polygon-clipped source hatches once, then apply one jitter pass. */
+export function generateJitteredHatchStrokes(polygon,options={}){
+  const {angle=45,spacing=7,phase=0}=options;
+  if(!(Number.isFinite(spacing)&&spacing>0))throw new Error('spacing must be positive');
+  if(!Number.isFinite(angle)||!Number.isFinite(phase))
+    throw new Error('Hatch angle and phase must be finite');
+  return jitterClippedHatchStrokes(generateHatchStrokes(polygon,{angle,spacing,phase}),options);
 }
