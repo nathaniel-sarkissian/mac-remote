@@ -13,7 +13,7 @@ jobs:
         run: |
           set -euo pipefail
           base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/${GITHUB_SHA}
-          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js src/gpu-meadow-faithful.js src/original-canvas-meadow.js; do
+          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js src/gpu-meadow-faithful.js src/original-canvas-meadow.js src/fast-original-meadow.js src/earcut.js; do
             header=$(mktemp)
             body=$(mktemp)
             status=$(curl -L -sS -o "$body" -D "$header" -w '%{http_code}' --retry 2 --connect-timeout 15 --max-time 60 "$base/$file")
@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/${GITHUB_SHA}
           mkdir -p /tmp/nts-local/src
-          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js src/gpu-meadow-faithful.js src/original-canvas-meadow.js; do
+          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js src/gpu-meadow-faithful.js src/original-canvas-meadow.js src/fast-original-meadow.js src/earcut.js; do
             curl -fLSs --retry 2 --connect-timeout 15 --max-time 60 "$base/$file" -o "/tmp/nts-local/$file"
           done
           # The CDN presents a confirmation page to automated HTML navigations.
@@ -101,7 +101,7 @@ jobs:
           flower_only=html.unescape(isolated.group(1)) if isolated else ''
           span_text=html.unescape(span.group(1)) if span else ''
           print('Desktop isolated 3D flowers:',flower_only,'span:',span_text)
-          if 'RECOVERED ORIGINAL GEOMETRY' not in source:
+          if 'ORIGINAL GEOMETRY · ONE GPU DRAW' not in source:
               raise SystemExit('Expected new source reliability renderer version marker')
           n=re.fullmatch(r'(\d+) FLOWER-ONLY',flower_only)
           width=re.fullmatch(r'(\d+) PX SPAN',span_text)
@@ -109,7 +109,7 @@ jobs:
               raise SystemExit('Desktop source 3D flowers missing or confined to a strip')
           build=re.search(r'<p id="buildMark">([^<]+)</p>',source)
           print('Build marker:',build.group(1) if build else '(missing)')
-          if not build or 'RECOVERED ORIGINAL GEOMETRY' not in build.group(1):
+          if not build or 'ORIGINAL GEOMETRY · ONE GPU DRAW' not in build.group(1):
               raise SystemExit('Old cached GPU meadow page, not the new original source reliability release')
           m=re.fullmatch(r'(\d+) FULL / (\d+) NO-GRASS',blooms)
           if not m or min(int(m.group(1)),int(m.group(2)))<16:
@@ -180,19 +180,64 @@ jobs:
             --screenshot=/tmp/nts-gpu-original-2d.png "$originalurl" >/dev/null 2>/tmp/gpu-original-image.err
           test -s /tmp/nts-gpu-original-2d.png
           file /tmp/nts-gpu-original-2d.png
+
+          # Benchmark first-frame preparation and one-draw camera updates with
+          # real source petals, disks, leaves, stems and grass on the simple GPU.
+          fasturl="http://127.0.0.1:8765/gpu.html?renderer=fast&smoke=1&focus=1"
+          timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
+            --disable-gpu-sandbox --virtual-time-budget=20000 --window-size=1280,820 \
+            --dump-dom "$fasturl" > /tmp/gpu-fast-dom.html 2>/tmp/gpu-fast.err
+          python3 - <<'PY'
+          import html,re
+          source=open('/tmp/gpu-fast-dom.html').read()
+          status=re.search(r'<strong id="backend">([^<]+)</strong>',source)
+          stats=re.search(r'<p id="sourceStats">([^<]+)</p>',source)
+          timings=re.search(r'<p id="cachedPerf"[^>]*>([^<]*)</p>',source)
+          flowers=re.search(r'<p id="fastFlowerPixels"[^>]*>([^<]*)</p>',source)
+          backend=html.unescape(status.group(1)) if status else ''
+          content=html.unescape(stats.group(1)) if stats else ''
+          timing=html.unescape(timings.group(1)) if timings else ''
+          rendered=html.unescape(flowers.group(1)) if flowers else ''
+          print('Fast source GPU backend:',backend)
+          print('Fast original source shape counts:',content)
+          print('Batched original GPU first frame and reused-view benchmark:',timing)
+          print('Actual isolated GPU petal pixels:',rendered)
+          measure=re.fullmatch(r'BATCHED ([0-9.]+) ms AVG / ([0-9.]+) ms MAX / INITIAL ([0-9.]+) ms / GENERATE ([0-9.]+) / MESH ([0-9.]+) / UPLOAD ([0-9.]+) / DRAW ([0-9.]+) / 12 REUSED MESHES',timing)
+          pixels=re.fullmatch(r'(\d+) FLOWER PIXELS / (\d+) PX SPREAD',rendered)
+          if 'WEBGL2 / ORIGINAL 2025 BATCHED GEOMETRY / READY' not in backend or not measure or not pixels:
+              print('Failed fast GPU page:',source[-2200:])
+              print('Chrome stderr:',open('/tmp/gpu-fast.err').read()[-1200:])
+              raise SystemExit('Batched source GPU did not initialize or render original flowers')
+          values=list(map(float,measure.groups()))
+          if int(pixels.group(1))<250 or int(pixels.group(2))<200:
+              raise SystemExit('Source original flowers missing in WebGL pixels')
+          if values[0]>150 or values[1]>500:
+              raise SystemExit('Batched camera redraws still too slow: '+timing)
+          PY
+          timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
+            --disable-gpu-sandbox --virtual-time-budget=18000 --window-size=1280,820 \
+            --screenshot=/tmp/nts-gpu-fast-original.png "$fasturl" \
+            >/dev/null 2>/tmp/gpu-fast-image.err
+          test -s /tmp/nts-gpu-fast-original.png
+          file /tmp/nts-gpu-fast-original.png
           # Windows laptop in Auto mode must automatically use recovered source.
           winurl="http://127.0.0.1:8765/gpu.html?smoke=1&focus=1"
           timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
+            --disable-gpu-sandbox \
             --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/157.0.0.0 Safari/537.36" \
-            --virtual-time-budget=12000 --window-size=1280,820 \
+            --virtual-time-budget=18000 --window-size=1280,820 \
             --dump-dom "$winurl" > /tmp/gpu-win-dom.html 2>/tmp/gpu-win.err
           python3 - <<'PY'
           import re
           source=open('/tmp/gpu-win-dom.html').read()
           mode=re.search(r'<strong id="backend">([^<]+)</strong>',source)
           print('Windows laptop auto renderer:',mode.group(1) if mode else '(missing)')
-          if not mode or 'CANVAS2D / ORIGINAL 2025 GEOMETRY / READY' not in mode.group(1):
-              raise SystemExit('Default Windows laptop failed to show original source')
+          if not mode or 'WEBGL2 / ORIGINAL 2025 BATCHED GEOMETRY / READY' not in mode.group(1):
+              print('Chrome stderr:',open('/tmp/gpu-win.err').read()[-1600:])
+              raise SystemExit('Windows automatic fast original source GPU renderer failed')
           PY
           # Reproduce the iPhone screenshot's actual AZ185 / EL30 / 77%
           # camera angle, with the canvas occupying the entire viewport.
@@ -268,6 +313,7 @@ jobs:
             /tmp/nts-gpu-screenshot.png
             /tmp/nts-gpu-desktop-flowers-only.png
             /tmp/nts-gpu-original-2d.png
+            /tmp/nts-gpu-fast-original.png
             /tmp/nts-gpu-default.png
             /tmp/nts-gpu-mobile.png
             /tmp/nts-gpu-flower-only.png

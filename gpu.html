@@ -14,7 +14,7 @@
 #cameraStatus{font-size:10px;color:#334a3f;letter-spacing:.07em;font-variant-numeric:tabular-nums}
 .field select{width:100%;padding:9px 10px;border:1px solid #d1d8ca;background:#fff;color:#314d35;cursor:pointer}
 #buildMark{font-size:10px;letter-spacing:.09em;color:#72816c}
-#sourceCanvas{position:absolute;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:1}
+#sourceCanvas,#fastCanvas{position:absolute;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:1}
 #sourceCanvas~.corner{z-index:2}
 #rendererStatus{font-weight:700;color:#355a46}
 #gpuDiagnostics,#sourceStats{font-size:10px;line-height:1.5;word-break:break-word}
@@ -31,14 +31,15 @@
 <div id="studio">
 <aside class="controls">
  <div class="brand">NTS <span>/</span> GPU</div>
- <p id="buildMark">RECOVERED ORIGINAL GEOMETRY · GPU DRIVER FALLBACK · NOV 12</p>
+ <p id="buildMark">ORIGINAL GEOMETRY · ONE GPU DRAW · NOV 12</p>
  <div class="eyebrow">PERFORMANCE STUDY / PHASE 01</div>
  <h1>GPU<br/><em>Meadow.</em></h1>
- <p class="lede">Original 2025 flowers and foliage, cached into one image for fast pan and zoom. Experimental 3D GPU mode remains available.</p>
+ <p class="lede">Original 2025 flowers and leaves rendered in one batched GPU draw. Original Canvas2D and experimental 3D modes remain available.</p>
  <div class="section">01 — SCENE CONTROLS</div>
  <label class="field">Renderer
  <select id="rendererMode" aria-label="Rendering backend">
-  <option value="auto" selected>Auto · reliable original on Windows</option>
+  <option value="auto" selected>Auto · fast original geometry on Windows</option>
+  <option value="fast">Fast GPU · original 2025 geometry</option>
   <option value="original">Original 2025 geometry · reliable 2D</option>
   <option value="gpu">Experimental GPU 3D geometry</option>
  </select></label>
@@ -61,14 +62,15 @@
  <button type="button" id="resetView">Reset view</button>
  <div class="section">03 — LIVE PERFORMANCE</div>
  <div class="metrics"><div><small>FULL-FRAME RATE</small><b id="fps">—</b></div><div><small>CPU SUBMISSION</small><b id="cpu">—</b></div></div>
- <div class="status"><strong id="backend">Initializing GPU…</strong><p id="gpu">Waiting for GPU timer…</p><p id="geometry"></p><p id="triangles"></p><p id="gpuErrors"></p><p id="gpuDiagnostics"></p><p id="sourceStats"></p><p id="cachedPerf" hidden></p><p id="bloomPixels" hidden></p><p id="flowerOnlyPixels" hidden></p><p id="flowerSpanPixels" hidden></p>Seed <span id="seed">2611</span></div>
+ <div class="status"><strong id="backend">Initializing GPU…</strong><p id="gpu">Waiting for GPU timer…</p><p id="geometry"></p><p id="triangles"></p><p id="gpuErrors"></p><p id="gpuDiagnostics"></p><p id="sourceStats"></p><p id="pipelinePerf"></p><p id="fastFlowerPixels" hidden></p><p id="cachedPerf" hidden></p><p id="bloomPixels" hidden></p><p id="flowerOnlyPixels" hidden></p><p id="flowerSpanPixels" hidden></p>Seed <span id="seed">2611</span></div>
  <div class="section">04 — NEXT MILESTONE</div>
  <p class="details">Original geometry code reconstructed on the GPU: 60 × 60 planting sites, six flower species, exact 13-point 3D leaf and petal shapes, species-specific petal sizes and layers, exact incremental stem-angle integration, six-sided flower disks and screen-plane grass triangles. A GPU stem atlas caches each growth step. Noise approximates the original seeded OpenSimplex field so individual editions will differ. Geometry-only, with original CPU hatching still available separately.</p>
  <div class="source"><a href="./index.html">Original hatched meadow</a><span>·</span><a href="https://verse.works/series/never-the-same-by-nat-sarkissian" target="_blank" rel="noopener">2025 source</a></div>
 </aside>
 <main class="main"><div class="topbar"><span>SHADER-GENERATED SCENE / FULL REGENERATION EACH FRAME</span><span>HATCHING NEXT</span></div>
  <div class="stage"><canvas id="canvas" aria-label="GPU meadow; drag to orbit, right or shift drag to pan, scroll to zoom."></canvas>
- <canvas id="sourceCanvas" aria-label="Original 2025 flower meadow geometry drawn with Canvas2D" style="display:none"></canvas><div id="error" class="error" hidden></div><div class="corner">3600 PLANTING SITES · RECOVERED SOURCE / GPU EXPERIMENT</div></div>
+ <canvas id="sourceCanvas" aria-label="Original 2025 flower meadow geometry drawn with Canvas2D" style="display:none"></canvas>
+ <canvas id="fastCanvas" aria-label="Original 2025 meadow geometry batch-rendered by WebGL2" style="display:none"></canvas><div id="error" class="error" hidden></div><div class="corner">3600 PLANTING SITES · SOURCE SHAPES / ONE GPU DRAW</div></div>
  <footer><span>GPU TRAITS + STEM JOINTS / 2 PREPASSES + 5 INSTANCED DRAWS</span><span>NEW SEED EVERY FRAME WHEN ENABLED</span></footer>
 </main></div>
 <script type="module" src="./src/gpu-meadow-main.js"></script>

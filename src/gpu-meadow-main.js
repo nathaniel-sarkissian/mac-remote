@@ -1,6 +1,7 @@
 import {GpuMeadow,GPU_MEADOW_SPEC} from './gpu-meadow.js';
 import {bindOrbitControls,OrbitCamera} from './gpu-orbit-camera.js';
 import {OriginalCanvasMeadow} from './original-canvas-meadow.js';
+import {FastOriginalMeadow} from './fast-original-meadow.js';
 const $=id=>document.getElementById(id);
 let realGpu=null,gpuInitError=null;
 const sharedCamera=new OrbitCamera();
@@ -25,6 +26,16 @@ const gpu={
 };
 const sourceCanvas=$('sourceCanvas');
 const sourceRenderer=new OriginalCanvasMeadow(sourceCanvas);
+const fastCanvas=$('fastCanvas');
+let fastRenderer=null,fastFailed=false,fastError='';
+function ensureFast(){
+  if(fastRenderer)return fastRenderer;
+  if(fastFailed)throw new Error(fastError||'Fast GPU path unavailable');
+  try{
+    fastRenderer=new FastOriginalMeadow(fastCanvas);
+    return fastRenderer;
+  }catch(error){fastFailed=true;fastError=error.message;throw error;}
+}
 let gpuFailed=false,gpuProbed=false,gpuProbeText='Not tested';
 let seed=2611,last=0,frames=0,sampleStart=0,fps=0;
 const plant=$('plantDensity'),grass=$('grassDensity'),animate=$('animate');
@@ -33,20 +44,23 @@ const rendererMode=$('rendererMode');
 const windowsLaptop=/Windows|Win32|Win64/i.test(navigator.userAgent);
 function selectedRenderer(){
   if(rendererMode.value==='original')return 'original';
-  if(gpuInitError)return 'original';
-  if(rendererMode.value==='gpu')return 'gpu';
-  if(gpuFailed)return 'original';
-  // The user's Windows laptop repeatedly failed to show any flowers
-  // even after indexed WebGL2 fixes. Prioritize the recovered original
-  // scene there; offer experimental source-derived GPU 3D explicitly.
-  if(windowsLaptop&&!animate.checked)return 'original';
+  if(rendererMode.value==='fast')return fastFailed?'original':'fast';
+  if(rendererMode.value==='gpu')return gpuInitError?'original':'gpu';
+  // Fast source mesh uses the original CPU-constructed polygons, but
+  // draws them in ONE simple GPU batch. It bypasses the experimental
+  // 3D procedural vertex shaders that show grass-only on Windows.
+  if(windowsLaptop&&!animate.checked)return fastFailed?'original':'fast';
+  if(gpuInitError||gpuFailed)return fastFailed?'original':'fast';
   return 'gpu';
 }
 function layerName(){return layerMode.value;}
 function showRenderer(active){
   sourceCanvas.style.display=active==='original'?'block':'none';
+  fastCanvas.style.display=active==='fast'?'block':'none';
   $('rendererStatus').textContent=active==='original'?
-    'ORIGINAL 2025 GEOMETRY / CANVAS2D (RELIABLE)':
+    'ORIGINAL 2025 GEOMETRY / CANVAS2D':
+    active==='fast'?
+    'ORIGINAL 2025 GEOMETRY / BATCHED GPU 2D':
     'GPU 3D SOURCE GEOMETRY / EXPERIMENTAL';
 }
 function sourceOptions(){
@@ -161,21 +175,42 @@ function drawScene(){
       kind='original';
     }
   }
+  if(kind==='fast'){
+    try{
+      showRenderer(kind);
+      lastResult=ensureFast().render(sourceOptions());
+    }catch(error){
+      fastFailed=true;
+      fastError=error.message;
+      gpuProbeText='Batched GPU rendering failed: '+error.message;
+      kind='original';
+    }
+  }
   if(kind==='original'){
     showRenderer(kind); // visible before Canvas2D reads clientWidth/Height
     lastResult=sourceRenderer.render(sourceOptions());
   }else showRenderer(kind);
   lastResult.cpuMs=performance.now()-start;
   $('backend').textContent=kind==='original'?
-    'CANVAS2D / ORIGINAL 2025 GEOMETRY':'WEBGL2 / ORIGINAL 3D GEOMETRY';
+    'CANVAS2D / ORIGINAL 2025 GEOMETRY':kind==='fast'?
+    'WEBGL2 / ORIGINAL 2025 BATCHED GEOMETRY':
+    'WEBGL2 / ORIGINAL 3D GEOMETRY';
   $('gpuDiagnostics').textContent=gpuProbeText+
     (gpuFailed?' · Original source fallback selected':'');
-  $('sourceStats').textContent=kind==='original'?
+  $('sourceStats').textContent=(kind==='original'||kind==='fast')?
     'SOURCE: '+lastResult.petals+' PETALS · '+lastResult.disks+
     ' CENTERS · '+lastResult.leaves+' LEAVES · '+lastResult.paths+
     ' STEM PATHS · '+lastResult.grass+' GRASS':'GPU original source geometry';
+  $('pipelinePerf').textContent=kind==='fast'?
+    'BUILD '+lastResult.cpuMs.toFixed(1)+' ms · GENERATE '+
+    lastResult.geometryMs.toFixed(1)+' · MESH '+lastResult.meshMs.toFixed(1)+
+    ' · UPLOAD '+lastResult.uploadMs.toFixed(1)+
+    ' · DRAW '+lastResult.drawMs.toFixed(1)+' ms':'';
+
   $('gpuErrors').textContent=kind==='gpu'?
-    (lastResult.glErrors.join(', ')||'No WebGL draw errors'):'Canvas2D: no WebGL dependence';
+    (lastResult.glErrors.join(', ')||'No WebGL draw errors'):
+    kind==='fast'?'Batched WebGL: no shader-generation dependency':
+    'Canvas2D: no WebGL dependence';
   return kind;
 }
 function loop(now){
@@ -205,7 +240,10 @@ function loop(now){
       $('cpu').textContent=lastResult.cpuMs.toFixed(2)+' ms '+
         (lastResult.mode==='original-source-cached-canvas2d'?
           (lastResult.rebuiltAtlas?'cache build':'cached camera draw'):'last draw');
-      $('gpu').textContent=lastResult.mode==='original-source-cached-canvas2d'?
+      $('gpu').textContent=lastResult.mode==='original-source-batched-webgl2'?
+        'SIMPLE GPU · '+lastResult.drawCalls+' DRAW · '+
+        lastResult.triangles.toLocaleString()+' TRIANGLES':
+        lastResult.mode==='original-source-cached-canvas2d'?
         'ORIGINAL GEOMETRY CACHED · '+(lastResult.atlasPixels/1000000).toFixed(1)+
           'M pixels · 1 image blit per camera move':
         (lastResult.gpuMs==null?'GPU timer unavailable':
@@ -250,7 +288,59 @@ function measureFlowerOnly(seedValue){
   }
   return {colored,spanPx:maxX<0?0:maxX-minX+1};
 }
-if(urlOptions.has('smoke')&&selectedRenderer()==='original'){
+if(urlOptions.has('smoke')&&selectedRenderer()==='fast'){
+  showRenderer('fast');
+  const current=sourceOptions();
+  const original=ensureFast().render(current);
+  if(original.petals<100||original.disks<100||original.leaves<100)
+    throw new Error('Fast GPU scene missing original source flowers or leaves');
+  const samples=[];
+  for(let i=0;i<12;i++){
+    const t=performance.now();
+    const frame=ensureFast().render({...current,panX:i*.13,zoom:1+i*.03});
+    samples.push(performance.now()-t);
+    if(frame.meshMs!==0||frame.uploadMs!==0||frame.drawCalls!==1)
+      throw new Error('Fast GPU unexpectedly rebuilt source geometry on camera move');
+  }
+  // Render ONLY the original 2025 petal and disk triangles, and verify
+  // pixels actually appear in the GPU framebuffer, not just in source stats.
+  ensureFast().render({...current,layer:'flowers'});
+  const gl=ensureFast().gl,w=gl.drawingBufferWidth,h=gl.drawingBufferHeight;
+  const buffer=new Uint8Array(w*h*4);
+  gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,buffer);
+  const bg=gl.getParameter(gl.COLOR_CLEAR_VALUE);
+  const rgb=[bg[0]*255,bg[1]*255,bg[2]*255];
+  let flowerPixels=0,left=w,right=-1;
+  for(let k=0;k<buffer.length;k+=4){
+    const delta=Math.max(Math.abs(buffer[k]-rgb[0]),
+      Math.abs(buffer[k+1]-rgb[1]),Math.abs(buffer[k+2]-rgb[2]));
+    if(delta>50){
+      flowerPixels++;const x=(k/4)%w;
+      left=Math.min(left,x);right=Math.max(right,x);
+    }
+  }
+  const spread=right>=left?right-left+1:0;
+  $('fastFlowerPixels').textContent=flowerPixels+' FLOWER PIXELS / '+spread+' PX SPREAD';
+  if(flowerPixels<250||spread<w*.20)
+    throw new Error('Batched source GPU failed to display real flower geometry: '+
+      $('fastFlowerPixels').textContent);
+  ensureFast().render(current); // return to original screenshot view
+  const avg=samples.reduce((a,b)=>a+b,0)/samples.length;
+  const max=Math.max(...samples);
+  $('cachedPerf').textContent='BATCHED '+avg.toFixed(2)+' ms AVG / '+
+    max.toFixed(2)+' ms MAX / INITIAL '+original.cpuMs.toFixed(2)+
+    ' ms / GENERATE '+original.geometryMs.toFixed(2)+
+    ' / MESH '+original.meshMs.toFixed(2)+
+    ' / UPLOAD '+original.uploadMs.toFixed(2)+
+    ' / DRAW '+original.drawMs.toFixed(2)+' / 12 REUSED MESHES';
+  $('sourceStats').textContent='SOURCE: '+original.petals+' PETALS · '+
+    original.disks+' CENTERS · '+original.leaves+' LEAVES · '+
+    original.paths+' STEM PATHS · '+original.grass+' GRASS';
+  $('backend').textContent='WEBGL2 / ORIGINAL 2025 BATCHED GEOMETRY / READY';
+  $('rendererStatus').textContent='SOURCE VERTICES PREPARED ONCE / ONE GPU DRAW';
+  $('triangles').textContent=original.triangles.toLocaleString()+
+    ' GPU TRIANGLES / ORIGINAL GEOMETRY';
+}else if(urlOptions.has('smoke')&&selectedRenderer()==='original'){
   showRenderer('original');
   const result=sourceRenderer.render(sourceOptions());
   // Measure actual camera interactions with the entire original source
