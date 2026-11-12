@@ -13,7 +13,7 @@ jobs:
         run: |
           set -euo pipefail
           base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/${GITHUB_SHA}
-          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js src/gpu-meadow-faithful.js; do
+          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js src/gpu-meadow-faithful.js src/original-canvas-meadow.js; do
             header=$(mktemp)
             body=$(mktemp)
             status=$(curl -L -sS -o "$body" -D "$header" -w '%{http_code}' --retry 2 --connect-timeout 15 --max-time 60 "$base/$file")
@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/${GITHUB_SHA}
           mkdir -p /tmp/nts-local/src
-          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js src/gpu-meadow-faithful.js; do
+          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js src/gpu-meadow-geometry.js src/gpu-meadow-mobile.js src/gpu-meadow-faithful.js src/original-canvas-meadow.js; do
             curl -fLSs --retry 2 --connect-timeout 15 --max-time 60 "$base/$file" -o "/tmp/nts-local/$file"
           done
           # The CDN presents a confirmation page to automated HTML navigations.
@@ -144,6 +144,45 @@ jobs:
             >/dev/null 2>/tmp/gpu-desktop-flower.err
           test -s /tmp/nts-gpu-desktop-flowers-only.png
           file /tmp/nts-gpu-desktop-flowers-only.png
+
+          # Test real original 2025 source geometry without the failing 3D GPU.
+          originalurl="http://127.0.0.1:8765/gpu.html?renderer=original&smoke=1&focus=1"
+          timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --virtual-time-budget=12000 --window-size=1280,820 \
+            --dump-dom "$originalurl" > /tmp/gpu-original-dom.html 2>/tmp/gpu-original.err
+          python3 - <<'PY'
+          import html,re
+          source=open('/tmp/gpu-original-dom.html').read()
+          status=re.search(r'<strong id="backend">([^<]+)</strong>',source)
+          counts=re.search(r'<p id="sourceStats">([^<]+)</p>',source)
+          state=html.unescape(status.group(1)) if status else ''
+          stat=html.unescape(counts.group(1)) if counts else ''
+          print('Original source Canvas2D renderer:',state)
+          print('Actual recovered 2025 shape counts:',stat)
+          matches=[re.search(r'(\d+) '+name,stat) for name in ['PETALS','CENTERS','LEAVES','STEM PATHS']]
+          if 'CANVAS2D / ORIGINAL 2025 GEOMETRY / READY' not in state or not all(matches) or min(int(x.group(1)) for x in matches)<100:
+              print('Page tail:',source[-2500:])
+              raise SystemExit('Recovered source petal/disk/leaf/stem geometry failed Canvas2D verification')
+          PY
+          timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --virtual-time-budget=12000 --window-size=1280,820 \
+            --screenshot=/tmp/nts-gpu-original-2d.png "$originalurl" >/dev/null 2>/tmp/gpu-original-image.err
+          test -s /tmp/nts-gpu-original-2d.png
+          file /tmp/nts-gpu-original-2d.png
+          # Windows laptop in Auto mode must automatically use recovered source.
+          winurl="http://127.0.0.1:8765/gpu.html?smoke=1&focus=1"
+          timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/157.0.0.0 Safari/537.36" \
+            --virtual-time-budget=12000 --window-size=1280,820 \
+            --dump-dom "$winurl" > /tmp/gpu-win-dom.html 2>/tmp/gpu-win.err
+          python3 - <<'PY'
+          import re
+          source=open('/tmp/gpu-win-dom.html').read()
+          mode=re.search(r'<strong id="backend">([^<]+)</strong>',source)
+          print('Windows laptop auto renderer:',mode.group(1) if mode else '(missing)')
+          if not mode or 'CANVAS2D / ORIGINAL 2025 GEOMETRY / READY' not in mode.group(1):
+              raise SystemExit('Default Windows laptop failed to show original source')
+          PY
           # Reproduce the iPhone screenshot's actual AZ185 / EL30 / 77%
           # camera angle, with the canvas occupying the entire viewport.
           mobileurl="http://127.0.0.1:8765/gpu.html?smoke=1&focus=1&userView=1"
@@ -217,6 +256,7 @@ jobs:
             /tmp/nts-hatch-screenshot.png
             /tmp/nts-gpu-screenshot.png
             /tmp/nts-gpu-desktop-flowers-only.png
+            /tmp/nts-gpu-original-2d.png
             /tmp/nts-gpu-default.png
             /tmp/nts-gpu-mobile.png
             /tmp/nts-gpu-flower-only.png
