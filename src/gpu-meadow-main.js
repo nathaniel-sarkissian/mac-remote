@@ -36,7 +36,7 @@ $('regenerate').addEventListener('click',()=>{
 });
 $('seed').textContent=String(seed);
 $('backend').textContent='WEBGL2 / VERTEX-SHADER GEOMETRY';
-$('geometry').textContent=GPU_MEADOW_SPEC.plants.toLocaleString()+' PLANT INSTANCES · '+GPU_MEADOW_SPEC.grassAttempts.toLocaleString()+' GRASS ATTEMPTS · 0 CPU POLYGONS';
+$('geometry').textContent=GPU_MEADOW_SPEC.plants.toLocaleString()+' PLANT INSTANCES · '+GPU_MEADOW_SPEC.grassAttempts.toLocaleString()+' GRASS ATTEMPTS · '+GPU_MEADOW_SPEC.flowerSpecies+' SOURCE SPECIES · 0 CPU POLYGONS';
 function loop(now){
   if(animate.checked)seed=(seed+1)%100000;
   const result=gpu.render({seed,plants:Number(plant.value),grass:Number(grass.value)});
