@@ -146,6 +146,12 @@ jobs:
           errors=re.search(r'<p id="gpuErrors">([^<]*)</p>',source)
           diagnostics=html.unescape(errors.group(1)) if errors else '(missing)'
           print('Mobile GPU draw diagnostics:',diagnostics)
+          isolated=re.search(r'<p id="flowerOnlyPixels"[^>]*>([^<]*)</p>',source)
+          flower_only=html.unescape(isolated.group(1)) if isolated else ''
+          print('Actual isolated blossom-only framebuffer pixels:',flower_only)
+          isolated_match=re.fullmatch(r'(\d+) FLOWER-ONLY',flower_only)
+          if not isolated_match or int(isolated_match.group(1))<250:
+              raise SystemExit('NO real flower heads in isolated GPU bloom pass')
           if diagnostics != 'No WebGL draw errors':
               raise SystemExit('Mobile GPU reported WebGL draw errors: '+diagnostics)
           camera=re.search(r'<p id="cameraStatus">([^<]+)</p>',source)
@@ -162,6 +168,16 @@ jobs:
             --screenshot=/tmp/nts-gpu-mobile.png "$mobileurl" >/dev/null 2>/tmp/gpu-mobile-image.err
           test -s /tmp/nts-gpu-mobile.png
           file /tmp/nts-gpu-mobile.png
+          # The separate flower-only frame proves petal rosettes exist,
+          # distinct from yellow foliage and grass pixel counts.
+          flowerurl="http://127.0.0.1:8765/gpu.html?smoke=1&focus=1&userView=1&headsOnly=1"
+          timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
+            --disable-gpu-sandbox --force-device-scale-factor=2 \
+            --virtual-time-budget=9000 --window-size=430,844 \
+            --screenshot=/tmp/nts-gpu-flower-only.png "$flowerurl" >/dev/null 2>/tmp/gpu-flowers-only.err
+          test -s /tmp/nts-gpu-flower-only.png
+          file /tmp/nts-gpu-flower-only.png
       - uses: actions/upload-artifact@v4
         with:
           name: never-the-same-hatch-browser
@@ -170,3 +186,4 @@ jobs:
             /tmp/nts-gpu-screenshot.png
             /tmp/nts-gpu-default.png
             /tmp/nts-gpu-mobile.png
+            /tmp/nts-gpu-flower-only.png

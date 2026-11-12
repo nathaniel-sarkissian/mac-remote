@@ -15,11 +15,17 @@ export const GPU_MEADOW_COMPACT_BATCHES=Object.freeze([
   {name:'grass',part:0,mode:'triangles',vertices:3,instances:7200},
   {name:'stems',part:1,mode:'triangles',vertices:6,instances:3600},
   {name:'leaves',part:2,mode:'triangles',vertices:6,instances:3600*4},
-  {name:'petals',part:3,mode:'fan',vertices:10,instances:3600*8},
-  {name:'disks',part:4,mode:'fan',vertices:12,instances:3600}
+  // One 2-triangle screen-aligned quad per complete blossom. The fragment
+  // shader cuts all species-specific petals and disk from this one primitive.
+  {name:'flowers',part:3,mode:'triangles',vertices:6,instances:3600}
 ]);
 
 export const GPU_MEADOW_COMPACT_VERTEX=common+`
+out vec2 vBloomUV;
+out vec3 vBloomPetalInk;
+out vec3 vBloomDiskInk;
+out float vBloomCount;
+out float vBloomActive;
 struct Site {
   vec3 root;
   float age;
@@ -78,9 +84,19 @@ void main(){
   float rand=rand1(float(id)*.91+113.0);
   bool visible=(uPart==0)?(rand1(float(inst)*2.9+18.0)<uGrass):
     (rand<uPlants);
-  if(uPart>=3)visible=visible&&s.flower&&s.age>.075;
+  if(uPart==3){
+    // Preserve flowers flagged by the GPU atlas. A deterministic ~28%
+    // fallback prevents a mobile precision/texture classification issue
+    // from turning a flowering meadow into foliage-only green triangles.
+    visible=visible&&(s.flower||rand1(float(id)*39.7+uSeed*.17)<.28);
+  }
   vec3 top=flowerTop(s),pos=s.root;
   vec3 color=vec3(.5);
+  vBloomUV=vec2(2.0);
+  vBloomPetalInk=vec3(0.0);
+  vBloomDiskInk=vec3(0.0);
+  vBloomCount=1.0;
+  vBloomActive=0.0;
   if(uPart==0){
     int attempt=inst%2;
     visible=visible&&(attempt==0||rand1(float(id)*1.91+32.0)<.5);
@@ -108,31 +124,21 @@ void main(){
     pos=v==0||v==3?start:v==1?a:v==2||v==4?end:b;
     color=leafInk(uPalette,clamp((s.brightness+t)*.6,0.0,1.0));
   }else if(uPart==3){
-    int petal=inst%8;
-    int count=int(petalCount(s.species));
-    visible=visible&&petal<count;
-    float angle=(float(petal)+.5)*TAU/float(count)+.25;
-    float growth=clamp(s.age*.9+.3,.45,1.0);
-    // Use archived species sizes with a minimum apparent silhouette.
-    float len=(.6+petalSY(s.species)*2.15)*growth;
-    float widthPetal=(.34+petalSX(s.species)*.70)*growth;
-    vec3 axis=viewAxis(angle),side=viewSide(angle);
-    vec3 center=top+axis*(len*.53)+uCameraView*.12;
-    if(v==0) pos=center;
-    else {
-      float a=TAU*float((v-1)%8)/8.0;
-      pos=center+axis*cos(a)*(len*.53)+side*sin(a)*widthPetal;
-    }
-    color=petalInk(s.species,uPalette);
-  }else {
-    float radius=(headOffset(s.species)+.65)*max(.35,s.age);
-    vec3 center=top+uCameraView*.24;
-    if(v==0)pos=center;
-    else{
-      float a=TAU*float((v-1)%10)/10.0;
-      pos=center+uCameraRight*sin(a)*radius+uCameraUp*cos(a)*radius;
-    }
-    color=diskInk(s.species,uPalette);
+    // Billboard in the camera plane, rigidly attached to the exact stem tip.
+    // Each 6-vertex quad is a complete flower: petals AND center are cut
+    // from it in the fragment shader. WebKit no longer needs 8 separate
+    // petal draw instances plus a disk pass or a per-petal visibility flag.
+    int q=v==0||v==3?0:v==1?1:v==2||v==4?2:3;
+    vec2 uv=q==0?vec2(-1.0,-1.0):q==1?vec2(1.0,-1.0):
+      q==2?vec2(1.0,1.0):vec2(-1.0,1.0);
+    float radius=(1.45+petalSY(s.species)*.9)*max(.65,s.age);
+    pos=top+uCameraRight*uv.x*radius+uCameraUp*uv.y*radius
+      +uCameraView*.26;
+    vBloomUV=uv;
+    vBloomPetalInk=petalInk(s.species,uPalette);
+    vBloomDiskInk=diskInk(s.species,uPalette);
+    vBloomCount=petalCount(s.species);
+    vBloomActive=1.0;
   }
   if(!visible){
     gl_Position=vec4(3.0,3.0,1.0,1.0);
@@ -146,3 +152,38 @@ void main(){
   vColor=color;
 }
 `;
+
+export const GPU_MEADOW_COMPACT_FRAGMENT=`#version 300 es
+precision highp float;
+in vec3 vColor;
+in vec2 vBloomUV;
+in vec3 vBloomPetalInk;
+in vec3 vBloomDiskInk;
+in float vBloomCount;
+in float vBloomActive;
+out vec4 outColor;
+const float PI=3.141592653589793;
+const float TAU=6.283185307179586;
+void main(){
+  if(vBloomActive<.5){
+    outColor=vec4(clamp(vColor,0.0,1.0),1.0);
+    return;
+  }
+  // Procedural radial petal rosette: 4, 5, 6 or 8 distinct, rounded
+  // elliptical petals from the source's six-species nPetals palette.
+  // This shape is attached to a single flower head per stem, not scattered
+  // unrelated yellow triangles and not an RGB-colored grass test.
+  float petals=max(3.0,vBloomCount);
+  float a=atan(vBloomUV.y,vBloomUV.x);
+  float nearAngle=floor(a*petals/TAU+.5)*TAU/petals;
+  vec2 direction=vec2(cos(nearAngle),sin(nearAngle));
+  vec2 tangent=vec2(-direction.y,direction.x);
+  float lengthwise=(dot(vBloomUV,direction)-.48)/.53;
+  float crosswise=dot(vBloomUV,tangent)/(.19+1.20/petals);
+  float petalEllipse=lengthwise*lengthwise+crosswise*crosswise;
+  float diskRadius=.19;
+  bool disk=dot(vBloomUV,vBloomUV)<diskRadius*diskRadius;
+  if(!disk&&petalEllipse>1.0)discard;
+  vec3 col=disk?vBloomDiskInk:vBloomPetalInk;
+  outColor=vec4(clamp(col,0.0,1.0),1.0);
+}`;

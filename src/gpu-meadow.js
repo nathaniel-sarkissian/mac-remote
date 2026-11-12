@@ -3,7 +3,7 @@
 // by one fragment-shader draw per new seed. Leaves/petals are instanced by the
 // vertex shader; no CPU polygons, hatch fragments or GPU readbacks.
 import {OrbitCamera} from './gpu-orbit-camera.js';
-import {GPU_MEADOW_COMPACT_VERTEX,GPU_MEADOW_COMPACT_BATCHES}
+import {GPU_MEADOW_COMPACT_VERTEX,GPU_MEADOW_COMPACT_FRAGMENT,GPU_MEADOW_COMPACT_BATCHES}
   from './gpu-meadow-mobile.js';
 import {
   GPU_MEADOW_VERTEX,GPU_MEADOW_PREPASS_VERTEX,GPU_MEADOW_PREPASS_FRAGMENT,
@@ -80,7 +80,9 @@ export class GpuMeadow {
     // billboard-style bloom shader instead of the expensive desktop
     // curved-mesh shader that proved unreliable on the user's Safari.
     this.batches=this.compact?GPU_MEADOW_COMPACT_BATCHES:GPU_MEADOW_BATCHES;
-    this.program=makeProgram(gl,this.compact?GPU_MEADOW_COMPACT_VERTEX:GPU_MEADOW_VERTEX);
+    this.program=makeProgram(gl,
+      this.compact?GPU_MEADOW_COMPACT_VERTEX:GPU_MEADOW_VERTEX,
+      this.compact?GPU_MEADOW_COMPACT_FRAGMENT:GPU_MEADOW_FRAGMENT);
     this.vao=gl.createVertexArray();
     gl.bindVertexArray(this.vao);
     this.uniforms={};
@@ -130,9 +132,10 @@ export class GpuMeadow {
       this.gl.viewport(0,0,width,height);
     }
   }
-  render({seed=2611,plants=100,grass=100}={}){
+  render({seed=2611,plants=100,grass=100,onlyPart=null}={}){
     if(!Number.isFinite(seed)||!Number.isFinite(plants)||plants<0||plants>100||
-       !Number.isFinite(grass)||grass<0||grass>100)
+       !Number.isFinite(grass)||grass<0||grass>100||
+       (onlyPart!==null&&(!Number.isInteger(onlyPart)||onlyPart<0||onlyPart>4)))
       throw new RangeError('Invalid procedural meadow parameters');
     const start=performance.now(),gl=this.gl;
     this.resize();
@@ -194,6 +197,7 @@ export class GpuMeadow {
     gl.uniform1i(this.uniforms.uRingPoints,ring);
     let triangles=0,vertices=0,instances=0;
     for(const batch of this.batches){
+      if(onlyPart!==null&&batch.part!==onlyPart)continue;
       gl.uniform1i(this.uniforms.uPart,batch.part);
       // Original grass never occludes. For the low-cost iPhone path, keep
       // flower petals/disks in front of foliage so a dense field never

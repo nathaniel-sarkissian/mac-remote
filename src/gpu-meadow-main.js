@@ -79,6 +79,20 @@ function countWarmFlowerPixels(){
   }
   return flowers;
 }
+// This test samples only the isolated flower batch. It cannot pass because
+// grass is yellow or leaves are warm-colored; an absent head draws 0 pixels.
+function countFlowerOnlyPixels(seedValue){
+  const result=gpu.render({seed:seedValue,plants:100,grass:0,onlyPart:3});
+  const bg= gpu.gl.getParameter(gpu.gl.COLOR_CLEAR_VALUE);
+  const bytes=new Uint8Array(canvas.width*canvas.height*4);
+  gpu.gl.readPixels(0,0,canvas.width,canvas.height,gpu.gl.RGBA,gpu.gl.UNSIGNED_BYTE,bytes);
+  const rgb=[bg[0]*255,bg[1]*255,bg[2]*255];
+  let colored=0;
+  for(let i=0;i<bytes.length;i+=4)
+    if(Math.max(Math.abs(bytes[i]-rgb[0]),Math.abs(bytes[i+1]-rgb[1]),
+       Math.abs(bytes[i+2]-rgb[2]))>45)colored++;
+  return colored;
+}
 if(urlOptions.has('smoke')){
   // Draw the actual full scene, then a grass-free plant-only scene. A renderer
   // that displays only grass now fails deployment instead of reporting READY.
@@ -86,8 +100,10 @@ if(urlOptions.has('smoke')){
   const fullBlooms=countWarmFlowerPixels();
   gpu.render({seed,plants:100,grass:0});
   const bareBlooms=countWarmFlowerPixels();
+  const heads=countFlowerOnlyPixels(seed);
+  $('flowerOnlyPixels').textContent=heads+' FLOWER-ONLY';
   $('bloomPixels').textContent=fullBlooms+' FULL / '+bareBlooms+' NO-GRASS';
-  if(fullBlooms<16||bareBlooms<16)
+  if(fullBlooms<16||bareBlooms<16||heads<250)
     throw new Error('GPU plant visibility regression: '+$('bloomPixels').textContent);
   if(!urlOptions.has('userView')){
     gpu.camera.orbit(60,-35);
@@ -96,7 +112,13 @@ if(urlOptions.has('smoke')){
       canvas.clientWidth,canvas.clientHeight);
   }
   updateCameraStatus();
-  const result=gpu.render({seed,plants:Number(plant.value),grass:Number(grass.value)});
+  // Snapshot mode leaves ONLY the verified blossom batch on the canvas.
+  // A flower-only PNG proves there are recognizable heads, not merely yellow
+  // grass/foliage. Normal playback and ordinary smoke render the full scene.
+  const headsOnly=urlOptions.has('headsOnly');
+  const result=gpu.render(headsOnly?
+    {seed,plants:100,grass:0,onlyPart:3}:
+    {seed,plants:Number(plant.value),grass:Number(grass.value)});
   $('triangles').textContent=result.triangles.toLocaleString()+
     ' GENERATED TRIANGLES / FRAME · '+result.ringPoints+' RING POINTS';
   $('cpu').textContent=result.cpuMs.toFixed(2)+' ms CPU submission';
