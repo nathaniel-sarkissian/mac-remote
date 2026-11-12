@@ -108,7 +108,8 @@ $('regenerate').addEventListener('click',()=>{
   $('seed').textContent=String(seed);invalidate();
 });
 $('seed').textContent=String(seed);
-$('backend').textContent='INITIALIZING SOURCE MEADOW';
+$('backend').textContent=selectedRenderer()==='gpu'?
+  'WEBGL2 / ORIGINAL 3D GEOMETRY':'INITIALIZING SOURCE MEADOW';
 $('rendererStatus').textContent='Renderer pending';
 $('gpuDiagnostics').textContent=gpuInitError?
   'GPU initialization error: '+gpuInitError.message:'GPU diagnostic: not yet checked';

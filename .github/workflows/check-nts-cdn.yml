@@ -101,16 +101,16 @@ jobs:
           flower_only=html.unescape(isolated.group(1)) if isolated else ''
           span_text=html.unescape(span.group(1)) if span else ''
           print('Desktop isolated 3D flowers:',flower_only,'span:',span_text)
-          if 'INDEXED 3D' not in source:
-              raise SystemExit('Indexed GPU flower renderer version marker missing')
+          if 'RECOVERED ORIGINAL GEOMETRY' not in source:
+              raise SystemExit('Expected new source reliability renderer version marker')
           n=re.fullmatch(r'(\d+) FLOWER-ONLY',flower_only)
           width=re.fullmatch(r'(\d+) PX SPAN',span_text)
           if not n or not width or int(n.group(1))<250 or int(width.group(1))<300:
               raise SystemExit('Desktop source 3D flowers missing or confined to a strip')
           build=re.search(r'<p id="buildMark">([^<]+)</p>',source)
           print('Build marker:',build.group(1) if build else '(missing)')
-          if not build or 'FLOWER-VISIBLE' not in build.group(1) or 'STATIC CACHE' not in build.group(1):
-              raise SystemExit('Old cached GPU meadow page, not the new laptop fix')
+          if not build or 'RECOVERED ORIGINAL GEOMETRY' not in build.group(1):
+              raise SystemExit('Old cached GPU meadow page, not the new original source reliability release')
           m=re.fullmatch(r'(\d+) FULL / (\d+) NO-GRASS',blooms)
           if not m or min(int(m.group(1)),int(m.group(2)))<16:
               raise SystemExit('GPU rendered no flower pixels: grass-only regression')
