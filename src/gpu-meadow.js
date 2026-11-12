@@ -4,6 +4,8 @@
 // There is no CPU scene array, geometry readback, hatch pass or CPU clipping.
 // The source artwork's 60x60 layout is retained, but species/noise geometry
 // is a GPU approximation rather than a pixel-identical port of OpenSimplex.
+import {OrbitCamera} from './gpu-orbit-camera.js';
+
 export const GPU_MEADOW_SPEC=Object.freeze({
   grid:60,plants:3600,grassAttempts:7200,stemSegments:6,
   leavesPerPlant:8,petalsPerPlant:8,ringPoints:13
@@ -21,6 +23,10 @@ precision highp int;
 uniform float uSeed;
 uniform vec2 uResolution;
 uniform float uZoom;
+uniform vec3 uCameraRight;
+uniform vec3 uCameraUp;
+uniform vec3 uCameraView;
+uniform vec3 uCameraTarget;
 uniform float uPlants;
 uniform float uGrass;
 uniform int uPart;
@@ -176,12 +182,13 @@ void main(){
     vColor=vec3(0.0);
     return;
   }
-  // Orthographic, elevated meadow projection. No CPU projection/vertex arrays.
-  vec2 xy=vec2(pos.x*0.78-pos.z*0.32,
-               pos.z*0.29+pos.x*0.08-pos.y*0.94);
-  vec2 ndc=vec2(xy.x*uZoom*2.0/uResolution.x,
-                -xy.y*uZoom*2.0/uResolution.y);
-  float depth=clamp((pos.z+66.0)/89.0,0.005,0.995)*2.0-1.0;
+  // All world-to-camera projection remains on GPU; orbit/pan/zoom only
+  // change four small uniforms, never regenerate CPU polygon geometry.
+  vec3 relative=pos-uCameraTarget;
+  vec2 viewPlane=vec2(dot(relative,uCameraRight),dot(relative,uCameraUp));
+  vec2 ndc=viewPlane*uZoom*2.0/uResolution;
+  // Ortographic depth honors arbitrary orbit angles including side views.
+  float depth=clamp(-dot(relative,uCameraView)/120.0,-0.99,0.99);
   gl_Position=vec4(ndc,depth,1.0);
 }`;
 export const GPU_MEADOW_FRAGMENT=`#version 300 es
@@ -218,11 +225,12 @@ export class GpuMeadow {
     const gl=canvas.getContext('webgl2',{alpha:false,antialias:true,depth:true,preserveDrawingBuffer:false});
     if(!gl)throw new Error('WebGL2 required for procedural meadow generation');
     this.gl=gl;
+    this.camera=new OrbitCamera();
     this.program=makeProgram(gl);
     this.vao=gl.createVertexArray();
     gl.bindVertexArray(this.vao);
     this.uniforms={};
-    for(const key of ['uSeed','uResolution','uZoom','uPlants','uGrass','uPart'])
+    for(const key of ['uSeed','uResolution','uZoom','uCameraRight','uCameraUp','uCameraView','uCameraTarget','uPlants','uGrass','uPart'])
       this.uniforms[key]=gl.getUniformLocation(this.program,key);
     this.timerExt=gl.getExtension('EXT_disjoint_timer_query_webgl2');
     this.pendingQueries=[];
@@ -267,7 +275,12 @@ export class GpuMeadow {
     gl.bindVertexArray(this.vao);
     gl.uniform1f(this.uniforms.uSeed,seed);
     gl.uniform2f(this.uniforms.uResolution,this.canvas.width,this.canvas.height);
-    gl.uniform1f(this.uniforms.uZoom,Math.min(this.canvas.width,this.canvas.height)/75);
+    gl.uniform1f(this.uniforms.uZoom,Math.min(this.canvas.width,this.canvas.height)/75*this.camera.zoom);
+    const basis=this.camera.basis();
+    gl.uniform3f(this.uniforms.uCameraRight,...basis.right);
+    gl.uniform3f(this.uniforms.uCameraUp,...basis.up);
+    gl.uniform3f(this.uniforms.uCameraView,...basis.view);
+    gl.uniform3f(this.uniforms.uCameraTarget,...this.camera.target);
     gl.uniform1f(this.uniforms.uPlants,plants/100);
     gl.uniform1f(this.uniforms.uGrass,grass/100);
     let triangles=0,instances=0;

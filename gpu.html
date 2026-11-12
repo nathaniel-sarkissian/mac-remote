@@ -9,6 +9,9 @@
 #studio .controls{max-height:100vh} .metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:22px}
 .metrics div{border:1px solid #d6dbce;padding:12px;min-width:0}.metrics b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.metrics small{font-size:9px;color:#738071;letter-spacing:.07em}
 #regenerate{width:100%;padding:12px;border:0;background:#334b3b;color:#fff;font-size:12px;cursor:pointer;margin-top:17px}
+#resetView{border:1px solid #d8d8cf;background:#fafaf5e8;cursor:pointer;padding:10px 12px;font-size:11px;color:#394e3e}
+.camera-help{font-size:11px;color:#6a786b;line-height:1.55;margin:12px 0 5px}
+#cameraStatus{font-size:10px;color:#334a3f;letter-spacing:.07em;font-variant-numeric:tabular-nums}
 .status{font-size:10px;color:#677b69;line-height:1.7;margin-top:17px}.status strong{color:#314d35}
 @media(max-width:800px){.metrics b{font-size:15px}}
 </style>
@@ -24,15 +27,19 @@
  <label class="field">Grass <output id="grassDensityOut">100%</output><input id="grassDensity" type="range" min="0" max="100" step="1" value="100"/></label>
  <label class="switch"><span>Generate a new seed every frame<small>Measures full GPU scene generation and drawing, not cached-camera FPS</small></span><input type="checkbox" id="animate" checked/></label>
  <button id="regenerate">New random meadow</button>
- <div class="section">02 — LIVE PERFORMANCE</div>
+ <div class="section">02 — CAMERA</div>
+ <p class="camera-help">Drag to orbit · Shift/secondary drag to pan · Scroll to zoom. On touch, drag with one finger to orbit, or use two fingers to pan and pinch-zoom.</p>
+ <p id="cameraStatus">AZ 22° · EL 20° · ZOOM 100%</p>
+ <button type="button" id="resetView">Reset view</button>
+ <div class="section">03 — LIVE PERFORMANCE</div>
  <div class="metrics"><div><small>FULL-FRAME RATE</small><b id="fps">—</b></div><div><small>CPU SUBMISSION</small><b id="cpu">—</b></div></div>
  <div class="status"><strong id="backend">Initializing GPU…</strong><p id="gpu">Waiting for GPU timer…</p><p id="geometry"></p><p id="triangles"></p>Seed <span id="seed">2611</span></div>
- <div class="section">03 — NEXT MILESTONE</div>
+ <div class="section">04 — NEXT MILESTONE</div>
  <p class="details">Experimental geometry-only port. Uses the original 60×60 placement structure, two grass attempts per site, seven flower variants and 13-point leaf/petal boundaries. Terrain, growth and bloom are approximated with GPU noise; it is not pixel-identical to the 2025 artwork. No hatching yet. The original CPU-occluded hatch renderer remains unchanged.</p>
  <div class="source"><a href="./index.html">Original hatched meadow</a><span>·</span><a href="https://verse.works/series/never-the-same-by-nat-sarkissian" target="_blank" rel="noopener">2025 source</a></div>
 </aside>
 <main class="main"><div class="topbar"><span>SHADER-GENERATED SCENE / FULL REGENERATION EACH FRAME</span><span>HATCHING NEXT</span></div>
- <div class="stage"><canvas id="canvas" aria-label="Procedurally GPU-generated flower meadow"></canvas><div id="error" class="error" hidden></div><div class="corner">3600 PLANTING SITES · WEBGL2</div></div>
+ <div class="stage"><canvas id="canvas" aria-label="Procedurally GPU-generated flower meadow. Drag to orbit, right or shift drag to pan, scroll or pinch to zoom."></canvas><div id="error" class="error" hidden></div><div class="corner">3600 PLANTING SITES · WEBGL2</div></div>
  <footer><span>GPU GEOMETRY / 5 INSTANCED DRAW CALLS</span><span>NEW SEED EVERY FRAME WHEN ENABLED</span></footer>
 </main></div>
 <script type="module" src="./src/gpu-meadow-main.js"></script>

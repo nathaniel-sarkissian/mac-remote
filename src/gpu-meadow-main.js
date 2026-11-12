@@ -1,4 +1,5 @@
 import {GpuMeadow,GPU_MEADOW_SPEC} from './gpu-meadow.js';
+import {bindOrbitControls} from './gpu-orbit-camera.js';
 const $=id=>document.getElementById(id);
 let gpu;
 try{
@@ -10,6 +11,19 @@ try{
 }
 let seed=2611,last=0,frames=0,sampleStart=0,fps=0;
 const plant=$('plantDensity'),grass=$('grassDensity'),animate=$('animate');
+const canvas=$('canvas');
+function updateCameraStatus(){
+  $('cameraStatus').textContent=
+    'AZ '+Math.round(((gpu.camera.yaw*180/Math.PI)%360+360)%360)+'° · '+
+    'EL '+Math.round(gpu.camera.pitch*180/Math.PI)+'° · '+
+    'ZOOM '+Math.round(gpu.camera.zoom*100)+'%';
+}
+bindOrbitControls(canvas,gpu.camera,updateCameraStatus);
+$('resetView').addEventListener('click',()=>{
+  gpu.camera.reset();
+  updateCameraStatus();
+});
+updateCameraStatus();
 function controls(){
   $('plantDensityOut').textContent=plant.value+'%';
   $('grassDensityOut').textContent=grass.value+'%';
@@ -42,6 +56,13 @@ function loop(now){
 }
 // CI smoke mode renders one GPU-generated frame and checks actual shader output.
 if(new URLSearchParams(window.location.search).has('smoke')){
+  // Test the camera matrix in a real shader draw too, not only the defaults.
+  gpu.render({seed,plants:Number(plant.value),grass:Number(grass.value)});
+  gpu.camera.orbit(60,-35);
+  gpu.camera.pan(30,-15,canvas.clientWidth,canvas.clientHeight);
+  gpu.camera.zoomAt(1.25,canvas.clientWidth*.6,canvas.clientHeight*.4,
+    canvas.clientWidth,canvas.clientHeight);
+  updateCameraStatus();
   const result=gpu.render({seed,plants:Number(plant.value),grass:Number(grass.value)});
   $('triangles').textContent=result.triangles.toLocaleString()+' GENERATED TRIANGLES / FRAME';
   $('cpu').textContent=result.cpuMs.toFixed(2)+' ms CPU submission';

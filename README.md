@@ -23,3 +23,7 @@ The renderer now performs full-width CPU foreground occlusion ONCE on each polyg
 ## GPU-generated meadow experiment
 
 The experimental WebGL2 `gpu.html` page uses shader-generated roots, stems, leaves, petals, disks and grass directly from 3,600 GPU instance IDs, including seven bloom varieties and 13-vertex leaf/petal outlines. No CPU polygon scene is allocated or read back. It supports 0-100% independent plant and grass counts, per-frame fresh seed generation, CPU submission timing, FPS and optional GPU timing. Hatching is **not** yet implemented in this separate GPU study; the original CPU-clipped NTS hatching remains available at `index.html`. The GPU terrain and growth/noise are visual approximations, not a source-identical reimplementation. Canonical source commit: https://github.com/nathaniel-sarkissian/hatch-render/commit/c5dc9c80ba40f2d4dbecc4f0b0fbc74e90e0560d
+
+## Orbit, pan and zoom controls for GPU Meadow
+
+The GPU geometry prototype supports mouse and touch orbit controls: left drag / one finger orbit, Shift or right/middle drag pan, wheel zoom anchored under the cursor, and two-finger pan and pinch zoom. A Reset View button restores the original framing; azimuth, elevation and zoom are shown live. Camera direction and target are uploaded as shader uniforms, without regenerating any CPU geometry. The generated scene and existing NTS hatcher are untouched. This release uses canonical commit https://github.com/nathaniel-sarkissian/hatch-render/commit/c03ee981cc864bd971bbd78245eba7583cfed10f

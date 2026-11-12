@@ -13,7 +13,7 @@ jobs:
         run: |
           set -euo pipefail
           base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/${GITHUB_SHA}
-          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js; do
+          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js; do
             header=$(mktemp)
             body=$(mktemp)
             status=$(curl -L -sS -o "$body" -D "$header" -w '%{http_code}' --retry 2 --connect-timeout 15 --max-time 60 "$base/$file")
@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/${GITHUB_SHA}
           mkdir -p /tmp/nts-local/src
-          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js; do
+          for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js gpu.html src/gpu-meadow.js src/gpu-meadow-main.js src/gpu-orbit-camera.js; do
             curl -fLSs --retry 2 --connect-timeout 15 --max-time 60 "$base/$file" -o "/tmp/nts-local/$file"
           done
           # The CDN presents a confirmation page to automated HTML navigations.
@@ -83,6 +83,12 @@ jobs:
           triangles=re.search(r'<p id="triangles">([^<]+)</p>',source)
           print('GPU meadow shader status:',html.unescape(status.group(1)) if status else '(not found)')
           print('GPU meadow triangles:',html.unescape(triangles.group(1)) if triangles else '(not found)')
+          camera=re.search(r'<p id="cameraStatus">([^<]+)</p>',source)
+          camera_value=html.unescape(camera.group(1)) if camera else ''
+          print('GPU camera after shader-orbit/pan/zoom smoke test:',camera_value)
+          if 'ZOOM 125%' not in camera_value or 'AZ 46' not in camera_value or 'EL 32' not in camera_value:
+              print('Browser stderr:',open('/tmp/gpu-chrome.err').read()[-2400:])
+              raise SystemExit('GPU camera shader controls did not update in Chrome')
           if not status or '/ READY' not in status.group(1) or not triangles or 'GENERATED TRIANGLES / FRAME' not in triangles.group(1):
               print('Browser stderr:',open('/tmp/gpu-chrome.err').read()[-2400:])
               raise SystemExit('GPU meadow vertex shader failed to compile or draw')
