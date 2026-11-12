@@ -71,6 +71,15 @@ jobs:
           # The new route is an isolated GPU-generated geometry experiment.
           # The `smoke` mode draws one fully regenerated scene and exits,
           # preventing unbounded animation from hiding shader compilation bugs.
+          # Capture the original 45-degree reset-camera composition too.
+          # This uses the unmodified, continuously regenerating published page.
+          timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
+            --disable-gpu-sandbox --virtual-time-budget=1500 --window-size=1280,820 \
+            --screenshot=/tmp/nts-gpu-default.png http://127.0.0.1:8765/gpu.html \
+            >/dev/null 2>/tmp/gpu-default.err
+          test -s /tmp/nts-gpu-default.png
+          file /tmp/nts-gpu-default.png
           gpuurl=http://127.0.0.1:8765/gpu.html?smoke=1
           timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
             --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
@@ -109,3 +118,4 @@ jobs:
           path: |
             /tmp/nts-hatch-screenshot.png
             /tmp/nts-gpu-screenshot.png
+            /tmp/nts-gpu-default.png
