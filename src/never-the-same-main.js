@@ -44,6 +44,20 @@ function renderLater(){
     frame=false;renderer.render();$('zoom').textContent=Math.round(renderer.camera.zoom*100)+'%';
   });
 }
+// Original Never the Same uses a ~75-unit scene, much smaller than the
+// Hatch Render test meadow. The shared fit() intentionally caps zoom at 3x,
+// which makes these authentic plants tiny on desktop. Fit this page's
+// coordinate scale directly without changing other demos' zoom behavior.
+function fitOriginal(padding=38){
+  const bounds=renderer.bounds;
+  const w=Math.max(1,canvas.clientWidth-2*padding);
+  const h=Math.max(1,canvas.clientHeight-2*padding);
+  renderer.camera.x=(bounds.minX+bounds.maxX)*.5;
+  renderer.camera.y=(bounds.minY+bounds.maxY)*.5;
+  renderer.camera.zoom=Math.max(.05,Math.min(30,
+    w/Math.max(1,bounds.maxX-bounds.minX),
+    h/Math.max(1,bounds.maxY-bounds.minY)));
+}
 function rebuild({fit=false}={}){
   $('stats').textContent='Generating and clipping original geometry…';
   const seed=num('seed')>>>0;
@@ -55,7 +69,7 @@ function rebuild({fit=false}={}){
   renderer.setScene(geometry.scene);
   if(renderer.occlusion&&renderer.stats.algorithm!=='boolean/full-width')
     throw new Error('CPU boolean clipping is required');
-  if(fit)renderer.fit(38);
+  if(fit)fitOriginal(38);
   setStats();renderLater();
 }
 function attempt(fn){
@@ -70,7 +84,7 @@ $('outlines').addEventListener('change',e=>{renderer.showOutlines=e.target.check
 $('generate').addEventListener('click',()=>attempt(()=>{
   $('seed').value=(num('seed')+7919)>>>0;rebuild({fit:true});
 }));
-$('fit').addEventListener('click',()=>{renderer.fit(38);renderLater();});
+$('fit').addEventListener('click',()=>{fitOriginal(38);renderLater();});
 const pointers=new Map();
 canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});});
 canvas.addEventListener('pointermove',e=>{
