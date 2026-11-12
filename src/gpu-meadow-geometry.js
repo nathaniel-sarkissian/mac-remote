@@ -1127,14 +1127,15 @@ vec3 grassAt(Plant p,int attempt,int corner){
   float a=angleNoise*PI/3.0+
     (fractal(p.root.xz*.014+vec2(3.7,2.5),2.0,.8,3)*2.0-1.0)*PI/3.0*.48*.75;
   float height=mix(5.0,15.0,noise2(p.root.xz*.04+vec2(543232.0,6544121.0)));
-  // Grass is constructed in the original screen-aligned XY plane; convert
-  // its 2D triangle into the same 3D coordinate plane for orbiting.
+  // Archive grassShape() is authored directly in SCREEN coordinates around
+  // _3dTo2d(root), rather than as a horizontal 3D ground-plane triangle.
+  // In the source YZ 45-degree projection, screen x = world.x and
+  // screen y = world.y*cos45-world.z*sin45; screen-space delta (dx,dy)
+  // therefore corresponds to source 3D delta (dx,dy/cos45,0).
   vec2 local=corner==0?vec2(-1.25,0.0):corner==1?vec2(0.0,-height*.5):vec2(1.25,0.0);
   vec2 projected=vec2(local.x*cos(a)-local.y*sin(a),
                       local.x*sin(a)+local.y*cos(a));
-  vec2 inverseRot=vec2((projected.x+projected.y)*.70710678,
-                       (projected.y-projected.x)*.70710678);
-  return p.root+vec3(inverseRot,0.0);
+  return p.root+vec3(projected.x,projected.y/.70710678,0.0);
 }
 void main(){
   int vertex=gl_VertexID,inst=gl_InstanceID;
