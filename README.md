@@ -63,3 +63,11 @@ The flower-only screenshot identified a concrete bug: after changing from eight 
 ## Faithful original 2025 meadow geometry in GPU (2026-11-12)
 
 The experimental `gpu.html` renderer now uses original 2025 geometry construction instead of simplified camera-facing daisies. `src/gpu-meadow-faithful.js` implements the source's incremental segment-by-segment stem rotations as a GPU-only 60 × 780 RGBA8 joint atlas, then projects 13-point 3D leaf/petal outlines, species-specific petal layers and original six-sided disks at those exact stem joints. Source-shaped screen-plane grass and original 60 × 60 planting-grid parameters remain. Rendering and two prepasses are GPU-driven every frame, preserving orbit/pan/zoom and the optional new-seed-every-frame benchmark. Unlike the original source, GPU noise is approximate, so minted-token geometry is not pixel-identical. The separate CPU /nts/ renderer and hatching remain untouched. Canonical commit: https://github.com/nathaniel-sarkissian/hatch-render/commit/674e587f35bcf3556efb31869696106d0baf48a6
+
+## Stable laptop GPU meadow and flower visibility (2026-11-12)
+
+The previous GPU page re-rendered roughly 1.93 million source-geometry vertices and regenerated every stem/plant GPU atlas **on every animation frame**, even when the seed and camera were unchanged. In this build, an unchanged meadow is drawn once and retained, with redraws on camera, density, or layer control changes. GPU traits and stem joints are regenerated only on a new seed; explicitly enabling "Generate a new seed every frame" retains the full-frame stress test.
+
+The original source 3D petals and disks can now be drawn above foliage by default; this is a **visibility/occlusion aid only**, and can be disabled to restore full depth testing. A layer selector isolates original flower petals and centers, plants without grass, or grass for debugging. The desktop release test checks actual flower-only pixels and coverage in Chrome, and uploads full desktop and flower-only desktop screenshots. The visible FLOWER-VISIBLE / STATIC CACHE version mark distinguishes new immutable CDN URLs from old cached tabs.
+
+Canonical committed source: https://github.com/nathaniel-sarkissian/hatch-render/commit/3d92cbcfaac958a9367919010e877ec6aa85a5e5

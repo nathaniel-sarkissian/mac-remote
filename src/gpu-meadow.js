@@ -133,6 +133,10 @@ export class GpuMeadow {
     this.timerExt=gl.getExtension('EXT_disjoint_timer_query_webgl2');
     this.pendingQueries=[];
     this.frames=0;
+    // A static seed needs no 60x60 plant-trait or 60x780 stem-atlas rebuild
+    // every requestAnimationFrame. New seeds still recompute both entirely
+    // on the GPU, retaining the full-regeneration benchmark pathway.
+    this.preparedSeed=null;
     this.stats={cpuMs:0,gpuMs:null,triangles:0,vertices:0,drawCalls:0,instances:0,ringPoints:13,
       mode:'original-3d-geometry',glErrors:[]};
     gl.disable(gl.BLEND);
@@ -148,10 +152,14 @@ export class GpuMeadow {
       this.gl.viewport(0,0,width,height);
     }
   }
-  render({seed=2611,plants=100,grass=100,onlyPart=null}={}){
+  render({seed=2611,plants=100,grass=100,onlyPart=null,
+    onlyParts=null,flowersForeground=true}={}){
     if(!Number.isFinite(seed)||!Number.isFinite(plants)||plants<0||plants>100||
        !Number.isFinite(grass)||grass<0||grass>100||
-       (onlyPart!==null&&(!Number.isInteger(onlyPart)||onlyPart<0||onlyPart>4)))
+       (onlyPart!==null&&(!Number.isInteger(onlyPart)||onlyPart<0||onlyPart>4))||
+       (onlyParts!==null&&(!Array.isArray(onlyParts)||
+         onlyParts.some(x=>!Number.isInteger(x)||x<0||x>4)))||
+       typeof flowersForeground!=='boolean')
       throw new RangeError('Invalid procedural meadow parameters');
     const start=performance.now(),gl=this.gl;
     this.resize();
@@ -169,9 +177,12 @@ export class GpuMeadow {
       query=gl.createQuery();
       gl.beginQuery(ext.TIME_ELAPSED_EXT,query);
     }
-    // GPU-only scene generation: rasterize all 3600 sites into four RGBA8
-    // attribute textures, each storing source-derived plant parameters.
+    // Generate the full procedural GPU scene only for a NEW seed.
+    // Keeping the seed unchanged must not repeatedly hammer the GPU with
+    // its 3600 plants and 46800 stem-joint shader computations.
+    const rebuild=seed!==this.preparedSeed;
     const traits=originalSceneTraits(seed);
+    if(rebuild){
     gl.bindFramebuffer(gl.FRAMEBUFFER,this.instanceFramebuffer);
     gl.viewport(0,0,60,60);
     gl.disable(gl.DEPTH_TEST);
@@ -196,6 +207,8 @@ export class GpuMeadow {
     }
     gl.drawArrays(gl.TRIANGLES,0,3);
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    this.preparedSeed=seed;
+    }
     gl.viewport(0,0,this.canvas.width,this.canvas.height);
     gl.enable(gl.DEPTH_TEST);
     const bg=traits.background;
@@ -232,12 +245,17 @@ export class GpuMeadow {
     let triangles=0,vertices=0,instances=0;
     for(const batch of this.batches){
       if(onlyPart!==null&&batch.part!==onlyPart)continue;
+      if(onlyParts!==null&&!onlyParts.includes(batch.part))continue;
       gl.uniform1i(this.uniforms.uPart,batch.part);
-      // The original source's grassShape is explicitly non-occluding.
-      // All 3D plant polygons, including layered petals, participate in
-      // the depth buffer. No detached screen-facing flower overlays.
-      gl.enable(gl.DEPTH_TEST);
-      gl.depthMask(batch.part!==0);
+      // The source geometry remains fully 3D. On less capable GPUs, dense
+      // grass/foliage can visually hide every blossom. The default
+      // "Keep flowers visible" view draws original 3D petals and disks as
+      // foreground layers WITHOUT depth testing. Users can disable this
+      // visibility aid for strict physical occlusion.
+      const head=flowersForeground&&batch.part>=3;
+      if(head)gl.disable(gl.DEPTH_TEST);
+      else gl.enable(gl.DEPTH_TEST);
+      gl.depthMask(batch.part!==0&&!head);
       const fan=batch.mode==='fan';
       const count=batch.vertices;
       gl.drawArraysInstanced(fan?gl.TRIANGLE_FAN:gl.TRIANGLES,0,count,batch.instances);
@@ -246,7 +264,7 @@ export class GpuMeadow {
       instances+=batch.instances;
       // A single first-frame diagnostic is cheap and exposes iOS WebGL
       // errors in the UI instead of silently drawing only the first pass.
-      if(this.frames===0&&typeof gl.getError==='function'){
+      if((this.frames<3||this.frames%60===0)&&typeof gl.getError==='function'){
         const error=gl.getError();
         if(error!==gl.NO_ERROR)this.stats.glErrors.push(batch.name+': 0x'+error.toString(16));
       }
@@ -256,7 +274,10 @@ export class GpuMeadow {
     if(query){gl.endQuery(ext.TIME_ELAPSED_EXT);this.pendingQueries.push(query);}
     this.frames++;
     Object.assign(this.stats,{cpuMs:performance.now()-start,triangles,vertices,
-      drawCalls:this.batches.length+2,instances,ringPoints:ring});
+      drawCalls:(rebuild?2:0)+this.batches.filter(b=>
+        (onlyPart===null||b.part===onlyPart)&&
+        (onlyParts===null||onlyParts.includes(b.part))).length,
+      rebuiltScene:rebuild,instances,ringPoints:ring});
     return this.stats;
   }
   dispose(){

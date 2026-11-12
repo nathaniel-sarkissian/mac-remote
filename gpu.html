@@ -12,6 +12,8 @@
 #resetView{border:1px solid #d8d8cf;background:#fafaf5e8;cursor:pointer;padding:10px 12px;font-size:11px;color:#394e3e}
 .camera-help{font-size:11px;color:#6a786b;line-height:1.55;margin:12px 0 5px}
 #cameraStatus{font-size:10px;color:#334a3f;letter-spacing:.07em;font-variant-numeric:tabular-nums}
+.field select{width:100%;padding:9px 10px;border:1px solid #d1d8ca;background:#fff;color:#314d35;cursor:pointer}
+#buildMark{font-size:10px;letter-spacing:.09em;color:#72816c}
 /* Explicitly render the scene in screenshot QA at mobile viewport sizes,
    avoiding old false-positive tests that only captured the control panel. */
 .scene-focus #studio{display:block;height:100vh}
@@ -25,13 +27,22 @@
 <div id="studio">
 <aside class="controls">
  <div class="brand">NTS <span>/</span> GPU</div>
+ <p id="buildMark">SOURCE 3D · FLOWER-VISIBLE · STATIC CACHE · NOV 12</p>
  <div class="eyebrow">PERFORMANCE STUDY / PHASE 01</div>
  <h1>GPU<br/><em>Meadow.</em></h1>
  <p class="lede">Original procedural geometry on the GPU: incremental curved stems, 13-point leaves and petals, layered flower heads, six-sided disks and terrain grass.</p>
  <div class="section">01 — SCENE CONTROLS</div>
  <label class="field">Plants <output id="plantDensityOut">100%</output><input id="plantDensity" type="range" min="0" max="100" step="1" value="100"/></label>
  <label class="field">Grass <output id="grassDensityOut">100%</output><input id="grassDensity" type="range" min="0" max="100" step="1" value="100"/></label>
- <label class="switch"><span>Generate a new seed every frame<small>Off: hold reference seed 2611. Full GPU scene generation and drawing still run every frame</small></span><input type="checkbox" id="animate" /></label>
+ <label class="field">Visible layers
+ <select id="layerMode" aria-label="Visible meadow layers">
+  <option value="all" selected>Full meadow</option>
+  <option value="flowers">Flowers only · original 3D petals and centers</option>
+  <option value="plants">Plants without grass</option>
+  <option value="grass">Grass only</option>
+ </select></label>
+ <label class="switch"><span>Keep flowers visible above foliage<small>Uses original 3D geometry. Turn off for strict depth occlusion.</small></span><input type="checkbox" id="visibleFlowers" checked/></label>
+ <label class="switch"><span>Generate a new seed every frame<small>Off: hold seed 2611 and redraw only when the camera or controls change</small></span><input type="checkbox" id="animate" /></label>
  <button id="regenerate">New random meadow</button>
  <div class="section">02 — CAMERA</div>
  <p class="camera-help">Drag to orbit · Shift/secondary drag to pan · Scroll to zoom. On touch, drag with one finger to orbit, or use two fingers to pan and pinch-zoom.</p>
@@ -45,7 +56,7 @@
  <div class="source"><a href="./index.html">Original hatched meadow</a><span>·</span><a href="https://verse.works/series/never-the-same-by-nat-sarkissian" target="_blank" rel="noopener">2025 source</a></div>
 </aside>
 <main class="main"><div class="topbar"><span>SHADER-GENERATED SCENE / FULL REGENERATION EACH FRAME</span><span>HATCHING NEXT</span></div>
- <div class="stage"><canvas id="canvas" aria-label="Procedurally GPU-generated flower meadow. Drag to orbit, right or shift drag to pan, scroll or pinch to zoom."></canvas><div id="error" class="error" hidden></div><div class="corner">3600 PLANTING SITES · WEBGL2</div></div>
+ <div class="stage"><canvas id="canvas" aria-label="Procedurally GPU-generated flower meadow. Drag to orbit, right or shift drag to pan, scroll or pinch to zoom."></canvas><div id="error" class="error" hidden></div><div class="corner">3600 PLANTING SITES · WEBGL2 · FLOWER-VISIBLE BUILD</div></div>
  <footer><span>GPU TRAITS + STEM JOINTS / 2 PREPASSES + 5 INSTANCED DRAWS</span><span>NEW SEED EVERY FRAME WHEN ENABLED</span></footer>
 </main></div>
 <script type="module" src="./src/gpu-meadow-main.js"></script>

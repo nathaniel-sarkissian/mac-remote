@@ -11,11 +11,23 @@ try{
 }
 let seed=2611,last=0,frames=0,sampleStart=0,fps=0;
 const plant=$('plantDensity'),grass=$('grassDensity'),animate=$('animate');
+const layerMode=$('layerMode'),visibleFlowers=$('visibleFlowers');
 const canvas=$('canvas');
+let dirty=true,rendered=0,lastResult=null,windowWidth=0,windowHeight=0;
+function invalidate(){dirty=true;}
+function sceneParts(){
+  return ({all:null,flowers:[3,4],plants:[1,2,3,4],grass:[0]})[layerMode.value]??null;
+}
+function renderOptions(){
+  return {seed,plants:Number(plant.value),grass:Number(grass.value),
+    onlyParts:sceneParts(),flowersForeground:visibleFlowers.checked};
+}
 // Dedicated QA view exposes the *rendered canvas*, rather than screenshotting
 // only the controls above it on a phone-sized browser viewport.
 const urlOptions=new URLSearchParams(window.location.search);
 if(urlOptions.has('focus'))document.documentElement.classList.add('scene-focus');
+if(['all','flowers','plants','grass'].includes(urlOptions.get('layer')))
+  layerMode.value=urlOptions.get('layer');
 if(urlOptions.has('userView')){
   gpu.camera.yaw=185*Math.PI/180;
   gpu.camera.pitch=30*Math.PI/180;
@@ -27,40 +39,66 @@ function updateCameraStatus(){
     'EL '+Math.round(gpu.camera.pitch*180/Math.PI)+'° · '+
     'ZOOM '+Math.round(gpu.camera.zoom*100)+'%';
 }
-bindOrbitControls(canvas,gpu.camera,updateCameraStatus);
+bindOrbitControls(canvas,gpu.camera,()=>{
+  updateCameraStatus();invalidate();
+});
 $('resetView').addEventListener('click',()=>{
   gpu.camera.reset();
-  updateCameraStatus();
+  updateCameraStatus();invalidate();
 });
+window.addEventListener('resize',invalidate);
+for(const control of [layerMode,visibleFlowers,animate])
+  control.addEventListener('change',invalidate);
 updateCameraStatus();
 function controls(){
   $('plantDensityOut').textContent=plant.value+'%';
   $('grassDensityOut').textContent=grass.value+'%';
 }
-for(const input of [plant,grass])input.addEventListener('input',controls);
+for(const input of [plant,grass])input.addEventListener('input',()=>{
+  controls();invalidate();
+});
 controls();
 $('regenerate').addEventListener('click',()=>{
   seed=1+Math.floor(Math.random()*100000);
-  $('seed').textContent=String(seed);
+  $('seed').textContent=String(seed);invalidate();
 });
 $('seed').textContent=String(seed);
 $('backend').textContent='WEBGL2 / ORIGINAL 3D GEOMETRY';
 $('geometry').textContent=GPU_MEADOW_SPEC.plants.toLocaleString()+' PLANT INSTANCES · '+GPU_MEADOW_SPEC.grassAttempts.toLocaleString()+' GRASS ATTEMPTS · '+GPU_MEADOW_SPEC.flowerSpecies+' SOURCE SPECIES · 0 CPU POLYGONS';
 function loop(now){
-  if(animate.checked)seed=(seed+1)%100000;
-  const result=gpu.render({seed,plants:Number(plant.value),grass:Number(grass.value)});
-  if(last>0&&now-last<1000)frames++;
-  last=now;
+  // A reference seed is stable by default. Do not rebuild its 3600-site
+  // GPU attributes, 46800 stem joints, or 1.9M draw vertices 60x/second.
+  // This prevents integrated laptop GPUs from being overloaded so severely
+  // that only the initial grass draw can be presented.
+  if(animate.checked){seed=(seed+1)%100000;invalidate();}
+  if(canvas.clientWidth!==windowWidth||canvas.clientHeight!==windowHeight){
+    windowWidth=canvas.clientWidth;windowHeight=canvas.clientHeight;invalidate();
+  }
+  if(dirty){
+    try{
+      lastResult=gpu.render(renderOptions());
+      rendered++;
+      dirty=false;
+      $('gpuErrors').textContent=lastResult.glErrors.join(', ')||'No WebGL draw errors';
+    }catch(error){
+      $('error').hidden=false;
+      $('error').textContent='GPU render failed: '+error.message;
+      dirty=false;
+    }
+  }
   if(!sampleStart)sampleStart=now;
   if(now-sampleStart>=600){
-    fps=frames*1000/(now-sampleStart);
-    frames=0;sampleStart=now;
-    $('fps').textContent=fps.toFixed(1)+' FPS';
-    $('cpu').textContent=result.cpuMs.toFixed(2)+' ms CPU submission';
-    $('gpu').textContent=result.gpuMs===null?'GPU timer unavailable':result.gpuMs.toFixed(2)+' ms GPU';
-    $('triangles').textContent=result.triangles.toLocaleString()+
-      ' GENERATED TRIANGLES / FRAME · '+result.mode;
-    $('gpuErrors').textContent=result.glErrors.join(', ')||'No WebGL draw errors';
+    $('fps').textContent=animate.checked?
+      (rendered*1000/(now-sampleStart)).toFixed(1)+' FPS':'STATIC';
+    rendered=0;sampleStart=now;
+    if(lastResult){
+      $('cpu').textContent=lastResult.cpuMs.toFixed(2)+' ms last draw';
+      $('gpu').textContent=lastResult.gpuMs===null?
+        'GPU timer unavailable':lastResult.gpuMs.toFixed(2)+' ms GPU';
+      $('triangles').textContent=lastResult.triangles.toLocaleString()+
+        ' TRIANGLES · '+lastResult.mode+
+        (lastResult.rebuiltScene?' · NEW SEED':' · GPU ATLAS REUSED');
+    }
     $('seed').textContent=String(seed);
   }
   requestAnimationFrame(loop);
@@ -125,8 +163,8 @@ if(urlOptions.has('smoke')){
   // grass/foliage. Normal playback and ordinary smoke render the full scene.
   const headsOnly=urlOptions.has('headsOnly');
   const result=gpu.render(headsOnly?
-    {seed,plants:100,grass:0,onlyPart:3}:
-    {seed,plants:Number(plant.value),grass:Number(grass.value)});
+    {seed,plants:100,grass:0,onlyParts:[3,4],flowersForeground:true}:
+    renderOptions());
   $('triangles').textContent=result.triangles.toLocaleString()+
     ' GENERATED TRIANGLES / FRAME · '+result.ringPoints+' RING POINTS';
   $('cpu').textContent=result.cpuMs.toFixed(2)+' ms CPU submission';

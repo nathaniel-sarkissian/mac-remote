@@ -95,6 +95,20 @@ jobs:
           bloom=re.search(r'<p id="bloomPixels"[^>]*>([^<]*)</p>',source)
           blooms=html.unescape(bloom.group(1)) if bloom else ''
           print('Actual warm flower pixels (full, grass-free):',blooms)
+          # Inspect the actual desktop 3D flower pass, not warm pixels from grass.
+          isolated=re.search(r'<p id="flowerOnlyPixels"[^>]*>([^<]*)</p>',source)
+          span=re.search(r'<p id="flowerSpanPixels"[^>]*>([^<]*)</p>',source)
+          flower_only=html.unescape(isolated.group(1)) if isolated else ''
+          span_text=html.unescape(span.group(1)) if span else ''
+          print('Desktop isolated 3D flowers:',flower_only,'span:',span_text)
+          n=re.fullmatch(r'(\d+) FLOWER-ONLY',flower_only)
+          width=re.fullmatch(r'(\d+) PX SPAN',span_text)
+          if not n or not width or int(n.group(1))<250 or int(width.group(1))<300:
+              raise SystemExit('Desktop source 3D flowers missing or confined to a strip')
+          build=re.search(r'<p id="buildMark">([^<]+)</p>',source)
+          print('Build marker:',build.group(1) if build else '(missing)')
+          if not build or 'FLOWER-VISIBLE' not in build.group(1) or 'STATIC CACHE' not in build.group(1):
+              raise SystemExit('Old cached GPU meadow page, not the new laptop fix')
           m=re.fullmatch(r'(\d+) FULL / (\d+) NO-GRASS',blooms)
           if not m or min(int(m.group(1)),int(m.group(2)))<16:
               raise SystemExit('GPU rendered no flower pixels: grass-only regression')
@@ -118,6 +132,16 @@ jobs:
             --screenshot=/tmp/nts-gpu-screenshot.png "$gpuurl" >/dev/null 2>/tmp/gpu-screenshot.err
           test -s /tmp/nts-gpu-screenshot.png
           file /tmp/nts-gpu-screenshot.png
+          # Source geometry, both petal polygons and centers, without grass
+          # or leaf occlusion. Desktop-only isolated screenshot is mandatory.
+          desktopflowers="http://127.0.0.1:8765/gpu.html?smoke=1&focus=1&layer=flowers"
+          timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
+            --disable-gpu-sandbox --virtual-time-budget=9000 --window-size=1280,820 \
+            --screenshot=/tmp/nts-gpu-desktop-flowers-only.png "$desktopflowers" \
+            >/dev/null 2>/tmp/gpu-desktop-flower.err
+          test -s /tmp/nts-gpu-desktop-flowers-only.png
+          file /tmp/nts-gpu-desktop-flowers-only.png
           # Reproduce the iPhone screenshot's actual AZ185 / EL30 / 77%
           # camera angle, with the canvas occupying the entire viewport.
           mobileurl="http://127.0.0.1:8765/gpu.html?smoke=1&focus=1&userView=1"
@@ -190,6 +214,7 @@ jobs:
           path: |
             /tmp/nts-hatch-screenshot.png
             /tmp/nts-gpu-screenshot.png
+            /tmp/nts-gpu-desktop-flowers-only.png
             /tmp/nts-gpu-default.png
             /tmp/nts-gpu-mobile.png
             /tmp/nts-gpu-flower-only.png
