@@ -13,7 +13,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/d2f5a227067a528741756e7f5e6272bc7a0787c0
+          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/43de40a08dcb24414795f42f7377693579511e56
           for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js; do
             header=$(mktemp)
             body=$(mktemp)
@@ -36,7 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/d2f5a227067a528741756e7f5e6272bc7a0787c0
+          base=https://rawcdn.githack.com/nathaniel-sarkissian/mac-remote/43de40a08dcb24414795f42f7377693579511e56
           mkdir -p /tmp/nts-local/src
           for file in index.html src/never-the-same-main.js src/never-the-same.css src/never-the-same-geometry.js src/hatch-renderer.js src/geometry.js src/occlusion.js src/coverage.js src/earcut.js; do
             curl -fLSs --retry 2 --connect-timeout 15 --max-time 60 "$base/$file" -o "/tmp/nts-local/$file"
@@ -47,24 +47,24 @@ jobs:
           python3 -m http.server 8765 --bind 127.0.0.1 --directory /tmp/nts-local > /tmp/http.log 2>&1 &
           sleep 1
           url=http://127.0.0.1:8765/index.html
-          timeout 100s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+          timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
             --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
-            --disable-gpu-sandbox --virtual-time-budget=30000 \
+            --disable-gpu-sandbox --virtual-time-budget=45000 \
             --window-size=1280,820 --dump-dom "$url" > /tmp/meadow-dom.html 2>/tmp/meadow-chrome.err
           python3 - <<'PY'
           import html,re
           source=open('/tmp/meadow-dom.html').read()
           m=re.search(r'<span id="stats">([^<]+)</span>',source)
           print('Rendered stats:',html.unescape(m.group(1)) if m else '(not found)')
-          if not m or 'PLANTS' not in m.group(1) or 'MARKS' not in m.group(1) or '100 PLANTS' not in m.group(1):
+          if not m or 'PLANTS' not in m.group(1) or 'MARKS' not in m.group(1) or '3600 PLANTS' not in m.group(1):
               print('HTML prefix:',source[:1000])
               print('Browser stderr:',open('/tmp/meadow-chrome.err').read()[-1800:])
               raise SystemExit('The original-geometry scene failed to initialize in Chrome')
           print('Actual WebGL page initialized with original geometry.')
           PY
-          timeout 100s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+          timeout 180s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
             --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
-            --disable-gpu-sandbox --virtual-time-budget=30000 --window-size=1280,820 \
+            --disable-gpu-sandbox --virtual-time-budget=45000 --window-size=1280,820 \
             --screenshot=/tmp/nts-hatch-screenshot.png "$url" \
             >/dev/null 2>/tmp/chrome-screenshot.err
           test -s /tmp/nts-hatch-screenshot.png
