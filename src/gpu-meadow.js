@@ -14,12 +14,25 @@ export const GPU_MEADOW_SPEC=Object.freeze({
   leavesPerPlant:12,petalsPerPlant:13,diskLayers:3,ringPoints:13,flowerSpecies:6
 });
 export const GPU_MEADOW_BATCHES=Object.freeze([
-  {name:'grass',part:0,vertices:3,instances:GPU_MEADOW_SPEC.grassAttempts},
-  {name:'stems',part:1,vertices:GPU_MEADOW_SPEC.stemSegments*6,instances:GPU_MEADOW_SPEC.plants},
-  {name:'leaves',part:2,vertices:GPU_MEADOW_SPEC.leavesPerPlant*GPU_MEADOW_SPEC.ringPoints*3,instances:GPU_MEADOW_SPEC.plants},
-  {name:'petals',part:3,vertices:GPU_MEADOW_SPEC.petalsPerPlant*GPU_MEADOW_SPEC.ringPoints*3,instances:GPU_MEADOW_SPEC.plants},
-  {name:'disks',part:4,vertices:GPU_MEADOW_SPEC.diskLayers*GPU_MEADOW_SPEC.ringPoints*3,instances:GPU_MEADOW_SPEC.plants}
+  {name:'grass',part:0,mode:'triangles',vertices:3,instances:GPU_MEADOW_SPEC.grassAttempts},
+  {name:'stems',part:1,mode:'triangles',vertices:GPU_MEADOW_SPEC.stemSegments*6,instances:GPU_MEADOW_SPEC.plants},
+  // Render each entire leaf, petal, or disk as one 15-vertex fan rather than
+  // submitting 39 duplicate vertex evaluations for its 13 triangles.
+  {name:'leaves',part:2,mode:'fan',vertices:GPU_MEADOW_SPEC.ringPoints+2,
+    instances:GPU_MEADOW_SPEC.plants*GPU_MEADOW_SPEC.leavesPerPlant},
+  {name:'petals',part:3,mode:'fan',vertices:GPU_MEADOW_SPEC.ringPoints+2,
+    instances:GPU_MEADOW_SPEC.plants*GPU_MEADOW_SPEC.petalsPerPlant},
+  {name:'disks',part:4,mode:'fan',vertices:GPU_MEADOW_SPEC.ringPoints+2,
+    instances:GPU_MEADOW_SPEC.plants*GPU_MEADOW_SPEC.diskLayers}
 ]);
+// Smaller viewports can use seven outline vertices without changing the
+// planting lattice, sizes, colors or the six original species. Restore all
+// thirteen source samples when zooming in to inspect a specimen.
+export function ringPointsForViewport(width,height,zoom=1){
+  if(![width,height,zoom].every(Number.isFinite)||width<=0||height<=0||zoom<=0)
+    throw new RangeError('Invalid GPU meadow viewport');
+  return Math.min(width,height)<550&&zoom<2?7:GPU_MEADOW_SPEC.ringPoints;
+}
 export const GPU_MEADOW_FRAGMENT=`#version 300 es
 precision highp float;
 in vec3 vColor;
@@ -60,7 +73,7 @@ export class GpuMeadow {
     gl.bindVertexArray(this.vao);
     this.uniforms={};
     for(const key of ['uSeed','uResolution','uZoom','uCameraRight','uCameraUp','uCameraView','uCameraTarget',
-      'uPlants','uGrass','uPart','uPalette','uFlowerThreshold','uPlant0','uPlant1','uPlant2','uPlant3'])
+      'uPlants','uGrass','uPart','uRingPoints','uPalette','uFlowerThreshold','uPlant0','uPlant1','uPlant2','uPlant3'])
       this.uniforms[key]=gl.getUniformLocation(this.program,key);
     // Standard WebGL2 RGBA8 MRTs. Avoid optional floating-point framebuffer
     // extensions, preserving compatibility with iOS Safari/WebGL2.
@@ -90,7 +103,7 @@ export class GpuMeadow {
     this.timerExt=gl.getExtension('EXT_disjoint_timer_query_webgl2');
     this.pendingQueries=[];
     this.frames=0;
-    this.stats={cpuMs:0,gpuMs:null,triangles:0,drawCalls:0,instances:0};
+    this.stats={cpuMs:0,gpuMs:null,triangles:0,vertices:0,drawCalls:0,instances:0,ringPoints:13};
     gl.disable(gl.BLEND);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -164,17 +177,21 @@ export class GpuMeadow {
     gl.uniform3f(this.uniforms.uCameraTarget,...this.camera.target);
     gl.uniform1f(this.uniforms.uPlants,plants/100);
     gl.uniform1f(this.uniforms.uGrass,grass/100);
-    let triangles=0,instances=0;
+    const ring=ringPointsForViewport(this.canvas.clientWidth,this.canvas.clientHeight,this.camera.zoom);
+    gl.uniform1i(this.uniforms.uRingPoints,ring);
+    let triangles=0,vertices=0,instances=0;
     for(const batch of GPU_MEADOW_BATCHES){
       gl.uniform1i(this.uniforms.uPart,batch.part);
-      gl.drawArraysInstanced(gl.TRIANGLES,0,batch.vertices,batch.instances);
-      triangles+=batch.vertices/3*batch.instances;
+      const fan=batch.mode==='fan',count=fan?ring+2:batch.vertices;
+      gl.drawArraysInstanced(fan?gl.TRIANGLE_FAN:gl.TRIANGLES,0,count,batch.instances);
+      triangles+=(fan?ring:count/3)*batch.instances;
+      vertices+=count*batch.instances;
       instances+=batch.instances;
     }
     if(query){gl.endQuery(ext.TIME_ELAPSED_EXT);this.pendingQueries.push(query);}
     this.frames++;
-    Object.assign(this.stats,{cpuMs:performance.now()-start,triangles,
-      drawCalls:GPU_MEADOW_BATCHES.length+1,instances});
+    Object.assign(this.stats,{cpuMs:performance.now()-start,triangles,vertices,
+      drawCalls:GPU_MEADOW_BATCHES.length+1,instances,ringPoints:ring});
     return this.stats;
   }
   dispose(){

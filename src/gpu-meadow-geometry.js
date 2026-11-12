@@ -1007,6 +1007,7 @@ uniform float uZoom;
 uniform vec3 uCameraRight,uCameraUp,uCameraView,uCameraTarget;
 uniform float uPlants,uGrass;
 uniform int uPart;
+uniform int uRingPoints;
 uniform sampler2D uPlant0,uPlant1,uPlant2,uPlant3;
 out vec3 vColor;
 struct Plant{
@@ -1062,7 +1063,12 @@ vec3 stemAt(Plant p,float t){
 }
 vec3 stemTangent(Plant p,float t){
   float lo=max(0.0,t-.005),hi=min(1.0,t+.005);
-  return normalize(stemAt(p,hi)-stemAt(p,lo));
+  // Young plants can be subpixel tall. On mobile float precision the two
+  // samples may quantize to the same position, and normalize(0) generates
+  // NaNs that hide every leaf and flower vertex in that specimen.
+  vec3 delta=stemAt(p,hi)-stemAt(p,lo);
+  float magnitude=length(delta);
+  return magnitude>0.00001?delta/magnitude:vec3(0.0,-1.0,0.0);
 }
 vec3 localLeaf(Plant p,int leaf,int index){
   int segment=p.flower?leaf:(leaf/2);
@@ -1073,7 +1079,7 @@ vec3 localLeaf(Plant p,int leaf,int index){
   float scale=mix(.75,.5,step)*clamp(p.age-step*.5,0.0,1.0);
   float leafSpan=mix(leafLengthMin(p.species),leafLengthMax(p.species),p.leafL);
   float h=mix(leafHeightMin(p.species),leafHeightMax(p.species),p.leafL);
-  float ang=TAU*float(index%13)/13.0;
+  float ang=TAU*float(index%uRingPoints)/float(uRingPoints);
   float along=(cos(ang)+1.0)*.5;
   // Exactly thirteen samples on the archive's elongated curved leaf outline.
   vec3 shape=vec3(sin(ang),cos(ang)+1.0,
@@ -1093,7 +1099,7 @@ vec3 localPetal(Plant p,int layer,int petal,int index){
   float layers=layerCount(p.species);
   float count=floor(n*mix(.8,1.0,float(layer)/layers)+.5);
   float radial=float(petal)*TAU/max(count,1.0)+PI/2.0+float(layer)*PI/8.0;
-  float a=TAU*float(index%13)/13.0;
+  float a=TAU*float(index%uRingPoints)/float(uRingPoints);
   float along=(cos(a)+1.0)*.5;
   vec3 shape=vec3(sin(a),cos(a)+1.0,-sqrt(max(0.0,1.0-pow(1.0-along,2.0))));
   shape.x*=mix(1.0,petalTaper(p.species),along);
@@ -1113,7 +1119,7 @@ vec3 localPetal(Plant p,int layer,int petal,int index){
   return stemAt(p,1.0)+shape;
 }
 vec3 localDisk(Plant p,int index){
-  float a=TAU*float(index%13)/13.0;
+  float a=TAU*float(index%uRingPoints)/float(uRingPoints);
   float r=(headOffset(p.species)+.8)*p.age;
   vec3 shape=vec3(sin(a)*r,cos(a)*r,0.0);
   vec3 tangent=stemTangent(p,1.0);
@@ -1139,7 +1145,10 @@ vec3 grassAt(Plant p,int attempt,int corner){
 }
 void main(){
   int vertex=gl_VertexID,inst=gl_InstanceID;
-  int id=uPart==0?inst/2:inst;
+  int id=uPart==0?inst/2:
+    uPart==2?inst/12:
+    uPart==3?inst/13:
+    uPart==4?inst/3:inst;
   Plant p=plantAt(id);
   // At 0 density, leave the instance invisible without modifying its seed.
   bool visible=true;
@@ -1172,16 +1181,16 @@ void main(){
     position=base+across*mix(.20,.045,t)*(corner==0||corner==1?-1.0:1.0);
     vColor=stemInk(p.species,uPalette);
   }else if(uPart==2){
-    int leaf=vertex/(13*3);
+    int leaf=inst%12;
     int maxLeaves=p.flower?int(p.count):int(p.count)*2;
     if(leaf>=maxLeaves){gl_Position=vec4(3.0,3.0,1.0,1.0);return;}
-    int tri=(vertex/3)%13,q=vertex%3;
-    int point=q==0?0:q==1?tri:(tri+1)%13;
+    // Triangle fan: anchor at 0, visit every perimeter point, close at 0.
+    int point=vertex==0?0:(vertex-1)%uRingPoints;
     position=localLeaf(p,leaf,point);
     float light=mix(p.brightness*.45,1.0,float(leaf)/max(float(maxLeaves),1.0));
     vColor=leafInk(uPalette,clamp(sqrt(max(light,0.0))*(.5+.5*p.brightness),0.0,1.0));
   }else if(uPart==3){
-    int slot=vertex/(13*3),layer=0,petal=0,cursor=slot;
+    int slot=inst%13,layer=0,petal=0,cursor=slot;
     int layers=int(layerCount(p.species));
     bool selected=false;
     for(int k=0;k<3;k++){
@@ -1191,8 +1200,7 @@ void main(){
       cursor-=count;
     }
     if(!selected){gl_Position=vec4(3.0,3.0,1.0,1.0);return;}
-    int tri=(vertex/3)%13,q=vertex%3;
-    int point=q==0?0:q==1?tri:(tri+1)%13;
+    int point=vertex==0?0:(vertex-1)%uRingPoints;
     // Source condition thins older blossoms but retains juveniles.
     float no=rand1(float(id)*29.2+float(petal)*17.0+float(layer));
     if(no>= (p.age<.5?1.0:mix(1.0,.20,clamp((p.age-.5)/.5,0.0,1.0))))
@@ -1200,10 +1208,9 @@ void main(){
     position=localPetal(p,layer,petal,point);
     vColor=petalInk(p.species,uPalette);
   }else{
-    int layer=vertex/(13*3);
+    int layer=inst%3;
     if(float(layer)>=layerCount(p.species)){gl_Position=vec4(3.0,3.0,1.0,1.0);return;}
-    int tri=(vertex/3)%13,q=vertex%3;
-    int point=q==0?0:q==1?tri:(tri+1)%13;
+    int point=vertex==0?0:(vertex-1)%uRingPoints;
     position=localDisk(p,point);
     vColor=diskInk(p.species,uPalette);
   }

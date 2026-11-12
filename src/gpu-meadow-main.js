@@ -55,16 +55,36 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 // CI smoke mode renders one GPU-generated frame and checks actual shader output.
+// Pixel-level smoke verification is isolated to ?smoke=1. The production
+// render loop does not read pixels back from the GPU.
+function countWarmFlowerPixels(){
+  const gl=gpu.gl,px=new Uint8Array(canvas.width*canvas.height*4);
+  gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,px);
+  let flowers=0;
+  for(let i=0;i<px.length;i+=4){
+    const r=px[i],g=px[i+1],b=px[i+2];
+    if(r>160&&r>g*1.17&&b<g*.85)flowers++;
+  }
+  return flowers;
+}
 if(new URLSearchParams(window.location.search).has('smoke')){
-  // Test the camera matrix in a real shader draw too, not only the defaults.
-  gpu.render({seed,plants:Number(plant.value),grass:Number(grass.value)});
+  // Draw the actual full scene, then a grass-free plant-only scene. A renderer
+  // that displays only grass now fails deployment instead of reporting READY.
+  gpu.render({seed,plants:100,grass:100});
+  const fullBlooms=countWarmFlowerPixels();
+  gpu.render({seed,plants:100,grass:0});
+  const bareBlooms=countWarmFlowerPixels();
+  $('bloomPixels').textContent=fullBlooms+' FULL / '+bareBlooms+' NO-GRASS';
+  if(fullBlooms<16||bareBlooms<16)
+    throw new Error('GPU plant visibility regression: '+$('bloomPixels').textContent);
   gpu.camera.orbit(60,-35);
   gpu.camera.pan(30,-15,canvas.clientWidth,canvas.clientHeight);
   gpu.camera.zoomAt(1.25,canvas.clientWidth*.6,canvas.clientHeight*.4,
     canvas.clientWidth,canvas.clientHeight);
   updateCameraStatus();
   const result=gpu.render({seed,plants:Number(plant.value),grass:Number(grass.value)});
-  $('triangles').textContent=result.triangles.toLocaleString()+' GENERATED TRIANGLES / FRAME';
+  $('triangles').textContent=result.triangles.toLocaleString()+
+    ' GENERATED TRIANGLES / FRAME · '+result.ringPoints+' RING POINTS';
   $('cpu').textContent=result.cpuMs.toFixed(2)+' ms CPU submission';
   $('backend').textContent+=' / READY';
 }else requestAnimationFrame(loop);
